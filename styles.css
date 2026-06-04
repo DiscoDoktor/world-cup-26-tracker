@@ -456,8 +456,15 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   padding: 4px 0;
 }
 .ko-row + .ko-row { border-top: 1px solid var(--gray-100); }
-.ko-name {
+/* Team name + owner line stacked vertically */
+.ko-team {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.ko-name {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -469,6 +476,18 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 }
 .ko-name.empty { color: var(--gray-400); font-weight: 400; font-style: italic; }
 .ko-name.winner-name { color: var(--green-700); }
+/* Sweepstake owner line under each team */
+.ko-owner {
+  font-size: .65rem;
+  font-weight: 600;
+  color: var(--gray-400);
+  line-height: 1.15;
+  padding-left: calc(.85rem + 4px); /* align under the team name, past the flag */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ko-owner.empty { font-style: italic; opacity: .8; }
 .kf { font-size: .85rem; flex-shrink: 0; margin-right: 4px; line-height: 1; }
 .ko-score {
   width: 36px;
@@ -805,6 +824,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   .ko-card-body { padding: 4px 5px 5px; }
   .ko-row { padding: 2px 0; }
   .ko-name { font-size: .6rem; }
+  .ko-owner { font-size: .5rem; padding-left: .6rem; }
   .kf { font-size: .62rem; margin-right: 2px; }
   .ko-score { width: 22px; font-size: .58rem; padding: 2px; border: 1px solid #999; }
   .pens-strip { display: none; }

@@ -222,6 +222,33 @@ function teamName(key) {
   return S.teams[key] || REAL_TEAMS[key] || key;
 }
 
+// Reverse lookup: a team name → its group key (e.g. "Spain" → "H0")
+function teamKeyByName(name) {
+  if (!name) return null;
+  for (const g of GROUPS) {
+    for (let i = 0; i < 4; i++) {
+      const k = `${g}${i}`;
+      if (teamName(k) === name) return k;
+    }
+  }
+  return null;
+}
+
+// Owner line for a knockout slot, looked up by the team's name.
+// Returns { label, text, empty } or null when the slot holds no real team.
+function ownerLineForName(name) {
+  const k = teamKeyByName(name);
+  if (!k) return null;
+  const o1 = (S.owners[k]  || '').trim();
+  const o2 = (S.owners2[k] || '').trim();
+  const list = [];
+  if (o1) list.push(o1);
+  if (o2 && o2 !== o1) list.push(o2);
+  if (list.length === 0) return { label: 'Owner',  text: '—', empty: true };
+  if (list.length === 1) return { label: 'Owner',  text: list[0] };
+  return { label: 'Owners', text: list.join(' / ') };
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════════════════
@@ -698,6 +725,19 @@ function koCardHTML(round, idx, side) {
     return `<span class="${cls}">${flag}${disp}</span>`;
   };
 
+  // Team name + owner line stacked vertically; owners follow the team
+  // automatically because they're looked up by the slot's current team name.
+  const teamBlock = (slot, name, cls) => {
+    let ownerHTML = '';
+    if (!slot) {
+      const info = ownerLineForName(name);
+      if (info) {
+        ownerHTML = `<span class="ko-owner${info.empty ? ' empty' : ''}">${info.label}: ${esc(info.text)}</span>`;
+      }
+    }
+    return `<div class="ko-team">${nameCell(slot, name, cls)}${ownerHTML}</div>`;
+  };
+
   // Incoming connector stub(s) — the Round of 32 (outermost) receives nothing;
   // the Final is fed from both the left and right semi-finals.
   let ci = '';
@@ -719,11 +759,11 @@ function koCardHTML(round, idx, side) {
         <div class="ko-date">${dateLine}</div>
         <div class="ko-card-body">
           <div class="ko-row">
-            ${nameCell(hSlot, m.h, hClass)}
+            ${teamBlock(hSlot, m.h, hClass)}
             <input class="ko-score" id="ks-${round}-${idx}-h" type="number" min="0" max="99" value="${esc(m.hs)}">
           </div>
           <div class="ko-row">
-            ${nameCell(aSlot, m.a, aClass)}
+            ${teamBlock(aSlot, m.a, aClass)}
             <input class="ko-score" id="ks-${round}-${idx}-a" type="number" min="0" max="99" value="${esc(m.as)}">
           </div>
           ${pensHTML}
