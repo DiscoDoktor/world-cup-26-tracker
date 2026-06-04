@@ -17,13 +17,34 @@ const ROUND_META = {
   final: { label: 'Final',               size: 1  }
 };
 
+// Official FIFA World Cup 2026 Round of 32 bracket (matches 73–88).
+// Slot label formats:
+//   "1X"        = Winner of Group X
+//   "2X"        = Runner-up of Group X
+//   "3:ABCDF"   = Best third-placed team from the eligible groups A/B/C/D/F
+// Best-third slots list the FIFA-defined eligible groups, so two third-placed
+// qualifiers can never be drawn against each other.
 const R32_SLOTS = [
-  ['1A','2B'], ['1B','2A'], ['1C','2D'], ['1D','2C'],
-  ['1E','2F'], ['1F','2E'], ['1G','2H'], ['1H','2G'],
-  ['1I','2J'], ['1J','2I'], ['1K','2L'], ['1L','2K'],
-  ['3rd-1','3rd-2'], ['3rd-3','3rd-4'],
-  ['3rd-5','3rd-6'], ['3rd-7','3rd-8']
+  ['2A','2B'],        // M73
+  ['1E','3:ABCDF'],   // M74
+  ['1F','2C'],        // M75
+  ['1C','2F'],        // M76
+  ['1I','3:CDFGH'],   // M77
+  ['2E','2I'],        // M78
+  ['1A','3:CEFHI'],   // M79
+  ['1L','3:EHIJK'],   // M80
+  ['1D','3:BEFIJ'],   // M81
+  ['1G','3:AEHIJ'],   // M82
+  ['2K','2L'],        // M83
+  ['1H','2J'],        // M84
+  ['1B','3:EFGIJ'],   // M85
+  ['1J','2H'],        // M86
+  ['1K','3:DEIJL'],   // M87
+  ['2D','2G']         // M88
 ];
+
+// Bracket-seeding version — bump to force a rebuild of saved knockout brackets
+const KO_VERSION = 2;
 
 const REAL_TEAMS = {
   A0:'Mexico',            A1:'South Africa',      A2:'South Korea',      A3:'Czech Republic',
@@ -265,7 +286,8 @@ function makeKO() {
 }
 
 function freshState() {
-  return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(), owners: {}, owners2: {}, awards: [] };
+  return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(),
+           koVersion: KO_VERSION, owners: {}, owners2: {}, awards: [] };
 }
 
 let S;
@@ -277,6 +299,13 @@ let S;
     if (!S.owners)  S.owners  = {};
     if (!S.owners2) S.owners2 = {};
     if (!S.awards)  S.awards  = [];
+    // Rebuild the knockout bracket if it was seeded by an older version
+    // (old saves used "3rd-N" placeholders that paired thirds against each
+    // other). Group scores, owners and awards are preserved.
+    if (S.koVersion !== KO_VERSION) {
+      S.ko = makeKO();
+      S.koVersion = KO_VERSION;
+    }
   } catch(e) {
     S = freshState();
   }
@@ -356,8 +385,68 @@ function advanceAll() {
   });
 }
 
+// Rank the twelve third-placed teams and allocate the best eight into their
+// official Round of 32 slots. Each best-third slot lists its FIFA-eligible
+// groups; we find a perfect matching of slots → qualifying groups so that no
+// two third-placed teams meet, every qualifying group is used once, and each
+// team only lands in a slot its group is eligible for.
+//
+// TODO: This produces a valid official-compliant seeding via bipartite
+// matching. The exact FIFA Annex C table (all C(12,8)=495 combinations) could
+// later replace the matching to reproduce FIFA's specific slot choices.
+function allocateThirds() {
+  // 1. Third-placed team of every group, with ranking stats
+  const thirds = GROUPS.map(g => {
+    const t = calcStandings(g)[2];
+    return { g, name: t.name, pts: t.pts, gd: t.gd, gf: t.gf };
+  });
+
+  // 2. Rank them (points → goal difference → goals for → name) and keep best 8
+  thirds.sort((a, b) =>
+    b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.name.localeCompare(b.name)
+  );
+  const best8        = thirds.slice(0, 8);
+  const qualGroups   = best8.map(t => t.g);
+  const nameByGroup  = {};
+  best8.forEach(t => { nameByGroup[t.g] = t.name; });
+
+  // 3. Collect the best-third slots and their eligible group sets
+  const slots = [];
+  R32_SLOTS.forEach(([h, a], idx) => {
+    [['h', h], ['a', a]].forEach(([side, label]) => {
+      const mm = /^3:([A-L]+)$/.exec(label);
+      if (mm) slots.push({ idx, side, eligible: new Set(mm[1].split('')) });
+    });
+  });
+
+  // 4. Perfect matching slot → qualifying group (backtracking)
+  const assign = {};
+  const used = new Set();
+  function match(i) {
+    if (i === slots.length) return true;
+    const s = slots[i];
+    for (const g of qualGroups) {
+      if (used.has(g) || !s.eligible.has(g)) continue;
+      used.add(g); assign[s.idx + s.side] = g;
+      if (match(i + 1)) return true;
+      used.delete(g); delete assign[s.idx + s.side];
+    }
+    return false;
+  }
+  match(0);
+
+  // 5. Write the assigned third-place team names into the bracket
+  slots.forEach(s => {
+    const g = assign[s.idx + s.side];
+    if (g) S.ko.r32[s.idx][s.side] = nameByGroup[g];
+  });
+}
+
 function populateR32() {
+  // Reset all R32 slots to their official seed labels
   R32_SLOTS.forEach(([h, a], i) => { S.ko.r32[i].h = h; S.ko.r32[i].a = a; });
+
+  // Fill group winners (1X) and runners-up (2X)
   GROUPS.forEach(g => {
     const st = calcStandings(g);
     const p1 = st[0].name, p2 = st[1].name;
@@ -368,6 +457,10 @@ function populateR32() {
       if (m.a === `2${g}`) m.a = p2;
     });
   });
+
+  // Fill the eight best third-placed teams into their eligible slots
+  allocateThirds();
+
   save();
   renderKnockout();
 }
@@ -673,16 +766,17 @@ function renderGroups() {
 const KO_DATES = {};
 
 // Turn a stored slot label into a friendly placeholder for display only.
-// Stored value stays "1A"/"2B"/"3rd-1" so populateR32() still matches it.
+// Stored value stays "1A"/"2B"/"3:ABCDF" so populateR32() still matches it.
 function prettySlot(s) {
   if (/^1[A-L]$/.test(s)) return `Winner Grp ${s[1]}`;
   if (/^2[A-L]$/.test(s)) return `Runner-up Grp ${s[1]}`;
-  if (/^3rd-(\d+)$/.test(s)) return `3rd Place #${s.split('-')[1]}`;
+  const m = /^3:([A-L]+)$/.exec(s);
+  if (m) return `Best 3rd place ${m[1].split('').join('/')}`;
   return s;
 }
 
 function isKoSlot(s) {
-  return !s || /^[12][A-L]$/.test(s) || /^3rd/.test(s);
+  return !s || /^[12][A-L]$/.test(s) || /^3:/.test(s);
 }
 
 // Build one bracket match card. `side` is 'l' | 'r' | 'c' (centre) for connectors.
