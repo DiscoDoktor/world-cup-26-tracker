@@ -213,6 +213,27 @@ const SAMPLE_SCORES = {
 // Bottom: Cape Verde H1, Qatar B2, Haiti C2, Jordan J3, Iraq I2, Curaçao E1
 const DUAL_OWNER_TEAMS = new Set(['C0','C2','B2','E1','H0','H1','I0','I2','J0','J3','K0','L0']);
 
+// ── Sweepstake draw (Assignment tab) ──
+// 12 owners; 5 rounds; each owner ends with exactly one team per round (5 total).
+// Shared rounds (bottom/top) have 6 teams × 2 owners = 12 owner slots.
+// All team names below are validated to exist in REAL_TEAMS.
+const NUM_OWNERS = 12;
+const DRAW_ROUNDS = [
+  { key:'bottom', name:'Round 1 — Bottom Shared Teams', shared:true,
+    teams:['Cape Verde','Qatar','Iraq','Jordan','Curaçao','Haiti'] },
+  { key:'pot3', name:'Round 2 — Pot 3', shared:false,
+    teams:['Australia','Bosnia-Herzegovina','Iran','Scotland','Congo DR','Algeria',
+           'Saudi Arabia','Tunisia','Ghana','South Africa','Panama','Uzbekistan'] },
+  { key:'pot2', name:'Round 3 — Pot 2', shared:false,
+    teams:['Mexico','Switzerland','Sweden','Ecuador','Turkey','Austria',
+           'Ivory Coast','New Zealand','South Korea','Egypt','Canada','Paraguay'] },
+  { key:'pot1', name:'Round 4 — Pot 1', shared:false,
+    teams:['Germany','Netherlands','Norway','Belgium','Colombia','Morocco',
+           'United States','Japan','Uruguay','Czech Republic','Croatia','Senegal'] },
+  { key:'top', name:'Round 5 — Top Shared Teams', shared:true,
+    teams:['Spain','France','Portugal','England','Argentina','Brazil'] }
+];
+
 // ═══════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════
@@ -285,9 +306,20 @@ function makeKO() {
   return ko;
 }
 
+function freshDraw() {
+  return {
+    names: Array(NUM_OWNERS).fill(''),
+    round: 0,            // current round index (0–4); complete flag below
+    picks: [[], [], [], [], []], // picks[round] = [{ o: ownerIdx, team }]
+    pool: null,          // remaining team pool for the current round
+    complete: false
+  };
+}
+
 function freshState() {
   return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(),
-           koVersion: KO_VERSION, owners: {}, owners2: {}, awards: [] };
+           koVersion: KO_VERSION, owners: {}, owners2: {}, awards: [],
+           draw: freshDraw() };
 }
 
 let S;
@@ -299,6 +331,7 @@ let S;
     if (!S.owners)  S.owners  = {};
     if (!S.owners2) S.owners2 = {};
     if (!S.awards)  S.awards  = [];
+    if (!S.draw)    S.draw    = freshDraw();
     // Rebuild the knockout bracket if it was seeded by an older version
     // (old saves used "3rd-N" placeholders that paired thirds against each
     // other). Group scores, owners and awards are preserved.
@@ -1219,11 +1252,18 @@ function initButtons() {
                       Object.values(S.owners2).some(v => v && v.trim());
     S.scores = {};
     S.ko     = makeKO();
-    if (hadOwners && confirm('Also reset owner names?')) { S.owners = {}; S.owners2 = {}; }
+    if (hadOwners && confirm('Also reset owner names?')) {
+      S.owners = {}; S.owners2 = {};
+      // Owner data is driven by the draw, so reset the draw too (keeps names)
+      const names = S.draw.names.slice();
+      S.draw = freshDraw();
+      S.draw.names = names;
+    }
     save();
     renderGroups();
     renderKnockout();
     renderSweepstake();
+    renderAssignment();
   });
 
   document.getElementById('btn-sample').addEventListener('click', () => {
@@ -1242,11 +1282,346 @@ function initButtons() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// ASSIGNMENT (sweepstake draw)
+// ═══════════════════════════════════════════════════════════════════
+
+let drawAnimating = false;
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Push fresh owner-slot data for whichever applies to other tabs
+function syncOwnersEverywhere() {
+  renderGroups();
+  renderKnockout();
+  refreshLeaderboard();
+  rebuildAwardDropdown();
+}
+
+// Lazily build the shuffled team pool for the current round
+function ensurePool() {
+  const d = S.draw;
+  if (d.complete || d.pool) return;
+  const round = DRAW_ROUNDS[d.round];
+  const pool = round.shared ? round.teams.flatMap(t => [t, t]) : round.teams.slice();
+  d.pool = shuffle(pool);
+}
+
+// Next owner (in fixed order 1→12) who hasn't drawn this round yet
+function nextOwnerIdx() {
+  const drawn = new Set(S.draw.picks[S.draw.round].map(p => p.o));
+  for (let i = 0; i < NUM_OWNERS; i++) if (!drawn.has(i)) return i;
+  return -1;
+}
+
+// Record one owner→team pick and write it into the shared owner data
+function commitPick(ownerIdx, team) {
+  const d = S.draw;
+  d.picks[d.round].push({ o: ownerIdx, team });
+  const pi = d.pool.indexOf(team);
+  if (pi >= 0) d.pool.splice(pi, 1);
+
+  // Update the owner field(s) used by the rest of the app
+  const key = teamKeyByName(team);
+  if (key) {
+    const name = d.names[ownerIdx];
+    if (DUAL_OWNER_TEAMS.has(key)) {
+      if (!(S.owners[key] || '').trim()) S.owners[key] = name;
+      else S.owners2[key] = name;
+    } else {
+      S.owners[key] = name;
+    }
+  }
+
+  // Advance round / finish
+  if (d.picks[d.round].length === NUM_OWNERS) {
+    if (d.round === DRAW_ROUNDS.length - 1) d.complete = true;
+    else { d.round++; d.pool = null; }
+  }
+  save();
+}
+
+// True only when all 12 owner names are filled in
+function ownersReady() {
+  return S.draw.names.every(n => n && n.trim());
+}
+
+// ── Dramatic slot-machine reveal ──
+function animateReveal(team, ownerName, fast, done) {
+  drawAnimating = true;
+  const reel   = document.getElementById('draw-reel');
+  const reveal = document.getElementById('draw-reveal');
+  const pool   = DRAW_ROUNDS[S.draw.round].teams;
+  if (reveal) reveal.innerHTML = '';
+
+  const total = fast ? 650 : 1900;
+  let delay   = fast ? 45 : 55;
+  let elapsed = 0;
+
+  (function tick() {
+    const rnd = pool[Math.floor(Math.random() * pool.length)];
+    if (reel) reel.innerHTML =
+      `<span class="reel-flag">${getFlag(rnd)}</span><span class="reel-name">${esc(rnd)}</span>`;
+    elapsed += delay;
+    delay = fast ? delay + 6 : delay * 1.13; // decelerate
+    if (elapsed < total) {
+      setTimeout(tick, delay);
+    } else {
+      if (reel) {
+        reel.classList.add('landed');
+        reel.innerHTML =
+          `<span class="reel-flag big">${getFlag(team)}</span><span class="reel-name big">${esc(team)}</span>`;
+        setTimeout(() => reel.classList.remove('landed'), 600);
+      }
+      if (reveal) reveal.innerHTML =
+        `<strong>${esc(ownerName)}</strong> gets ${getFlag(team)} <strong>${esc(team)}</strong>! 🎉`;
+      drawAnimating = false;
+      done && done();
+    }
+  })();
+}
+
+// Draw the next single owner (full dramatic animation)
+function drawNext() {
+  if (drawAnimating) return;
+  if (!ownersReady()) { alert('Please enter all 12 owner names first.'); return; }
+  const d = S.draw;
+  if (d.complete) return;
+  ensurePool();
+  const o = nextOwnerIdx();
+  if (o < 0) return;
+  const team = d.pool[Math.floor(Math.random() * d.pool.length)];
+  animateReveal(team, d.names[o], false, () => {
+    commitPick(o, team);
+    syncOwnersEverywhere();
+    updateDrawStatus();
+  });
+}
+
+// Draw every remaining pick in the current round (fast chained animations)
+function drawFullRound() {
+  if (drawAnimating) return;
+  if (!ownersReady()) { alert('Please enter all 12 owner names first.'); return; }
+  const d = S.draw;
+  if (d.complete) return;
+  ensurePool();
+  const startRound = d.round;
+
+  (function step() {
+    if (d.complete || d.round !== startRound) { syncOwnersEverywhere(); updateDrawStatus(); return; }
+    const o = nextOwnerIdx();
+    if (o < 0) { syncOwnersEverywhere(); updateDrawStatus(); return; }
+    const team = d.pool[Math.floor(Math.random() * d.pool.length)];
+    animateReveal(team, d.names[o], true, () => {
+      commitPick(o, team);
+      updateDrawStatus();
+      step();
+    });
+  })();
+}
+
+// Reset just the draw progress (keep owner names); clears assigned owners
+function resetDraw() {
+  const hasPicks = S.draw.picks.some(r => r.length > 0);
+  if (hasPicks && !confirm('Reset the draw? All current team assignments will be cleared (owner names are kept).')) return;
+  const names = S.draw.names.slice();
+  S.draw = freshDraw();
+  S.draw.names = names;
+  S.owners = {};
+  S.owners2 = {};
+  save();
+  syncOwnersEverywhere();
+  renderAssignment();
+}
+
+// Clear everything in the Assignment tab (names + draw + owners)
+function clearAssignment() {
+  const hasData = S.draw.names.some(n => n && n.trim()) || S.draw.picks.some(r => r.length > 0);
+  if (hasData && !confirm('Clear the whole assignment? Owner names and all team assignments will be deleted.')) return;
+  S.draw = freshDraw();
+  S.owners = {};
+  S.owners2 = {};
+  save();
+  syncOwnersEverywhere();
+  renderAssignment();
+}
+
+// ── Rendering ──
+function buildOwnerInputsHTML() {
+  return S.draw.names.map((nm, i) => `
+    <div class="own-field">
+      <span class="own-num">Owner ${i + 1}</span>
+      <input id="own-${i}" class="own-input" type="text" maxlength="6"
+             value="${esc(nm)}" placeholder="Name">
+    </div>`).join('');
+}
+
+function buildTeamListHTML() {
+  const d = S.draw;
+  if (d.complete) return '';
+  const round = DRAW_ROUNDS[d.round];
+  // Who has each team in this round so far
+  const takenBy = {};
+  d.picks[d.round].forEach(p => {
+    (takenBy[p.team] = takenBy[p.team] || []).push(d.names[p.o]);
+  });
+  return round.teams.map(t => {
+    const owners = takenBy[t] || [];
+    const need = round.shared ? 2 : 1;
+    const done = owners.length >= need;
+    return `
+      <div class="pot-team${done ? ' taken' : ''}">
+        <span class="pot-flag">${getFlag(t)}</span>
+        <span class="pot-name">${esc(t)}</span>
+        ${owners.length ? `<span class="pot-owners">${owners.map(esc).join(', ')}</span>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function buildDrawSummaryHTML() {
+  const d = S.draw;
+  const cell = (team) => team
+    ? `<span class="sum-team">${getFlag(team)} ${esc(team)}</span>`
+    : '<span class="sum-empty">—</span>';
+
+  const rows = d.names.map((nm, oi) => {
+    const perRound = DRAW_ROUNDS.map((r, ri) => {
+      const p = d.picks[ri].find(x => x.o === oi);
+      return p ? p.team : '';
+    });
+    const total = perRound.filter(Boolean).length;
+    const label = nm && nm.trim() ? esc(nm) : `Owner ${oi + 1}`;
+    return `
+      <tr>
+        <td class="sum-owner">${label}</td>
+        ${perRound.map(t => `<td>${cell(t)}</td>`).join('')}
+        <td class="sum-total">${total}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <table class="sum-table">
+      <thead>
+        <tr>
+          <th>Owner</th>
+          <th>Bottom</th><th>Pot 3</th><th>Pot 2</th><th>Pot 1</th><th>Top</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// Refresh the live parts of the tab without rebuilding inputs / reveal area
+function updateDrawStatus() {
+  const d = S.draw;
+  const info = document.getElementById('draw-roundinfo');
+  const list = document.getElementById('draw-teamlist');
+  const sum  = document.getElementById('draw-summary');
+  const done = document.getElementById('draw-done');
+
+  if (info) {
+    if (d.complete) {
+      info.innerHTML = `<span class="round-badge">✅ Draw complete</span>`;
+    } else {
+      const r = DRAW_ROUNDS[d.round];
+      const n = d.picks[d.round].length;
+      info.innerHTML =
+        `<span class="round-badge">${esc(r.name)}</span>
+         <span class="round-prog">${n} / ${NUM_OWNERS} owners drawn</span>`;
+    }
+  }
+  if (list) list.innerHTML = buildTeamListHTML();
+  if (sum)  sum.innerHTML  = buildDrawSummaryHTML();
+  if (done) done.style.display = d.complete ? 'block' : 'none';
+
+  // Disable draw buttons when finished
+  ['btn-draw-next','btn-draw-round'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = d.complete;
+  });
+}
+
+function renderAssignment() {
+  const pane = document.getElementById('tab-assignment');
+  if (!pane) return;
+
+  pane.innerHTML = `
+    <div class="assign-intro">
+      <h2 class="assign-title">🎲 Sweepstake Draw</h2>
+      <p class="assign-sub">Enter 12 owners, then draw teams round by round. Assignments flow straight into the Groups, Knockout and Sweepstake tabs.</p>
+    </div>
+
+    <div class="assign-grid">
+      <div class="assign-card">
+        <div class="assign-head">1 · Owners</div>
+        <div class="owner-fields">${buildOwnerInputsHTML()}</div>
+        <div class="assign-btn-row">
+          <button id="btn-save-owners" class="btn btn-green btn-sm">💾 Save owners</button>
+          <button id="btn-clear-assign" class="btn btn-danger btn-sm">🗑 Clear assignment</button>
+        </div>
+      </div>
+
+      <div class="assign-card">
+        <div class="assign-head">2 · The Draw</div>
+        <div id="draw-roundinfo" class="draw-roundinfo"></div>
+        <div id="draw-reel" class="draw-reel"><span class="reel-name">Ready…</span></div>
+        <div id="draw-reveal" class="draw-reveal"></div>
+        <div class="assign-btn-row">
+          <button id="btn-draw-next"  class="btn btn-gold btn-sm">🎯 Draw next owner</button>
+          <button id="btn-draw-round" class="btn btn-green btn-sm">⚡ Draw full round</button>
+          <button id="btn-reset-draw" class="btn btn-danger btn-sm">↺ Reset draw</button>
+        </div>
+        <div class="draw-teamlist-wrap">
+          <div class="assign-subhead">Teams this round</div>
+          <div id="draw-teamlist" class="draw-teamlist"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="draw-done" class="draw-done">🏆 Every owner has 5 teams — the draw is complete!</div>
+
+    <div class="assign-card summary-card">
+      <div class="assign-head">3 · Assignment Summary</div>
+      <div id="draw-summary"></div>
+    </div>`;
+
+  // Owner name inputs
+  for (let i = 0; i < NUM_OWNERS; i++) {
+    document.getElementById(`own-${i}`)?.addEventListener('input', e => {
+      S.draw.names[i] = e.target.value;
+      save();
+    });
+  }
+
+  // Buttons
+  document.getElementById('btn-save-owners')?.addEventListener('click', () => {
+    const filled = S.draw.names.filter(n => n && n.trim());
+    const dupes = filled.length !== new Set(filled.map(n => n.trim().toLowerCase())).size;
+    save();
+    if (dupes) alert('Saved — note: some owner names are duplicates. Shared teams may then show the same name twice.');
+    else alert(`Saved ${filled.length} owner name${filled.length === 1 ? '' : 's'}.`);
+  });
+  document.getElementById('btn-clear-assign')?.addEventListener('click', clearAssignment);
+  document.getElementById('btn-draw-next')?.addEventListener('click', drawNext);
+  document.getElementById('btn-draw-round')?.addEventListener('click', drawFullRound);
+  document.getElementById('btn-reset-draw')?.addEventListener('click', resetDraw);
+
+  updateDrawStatus();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════════════════
 
 renderGroups();
 renderKnockout();
 renderSweepstake();
+renderAssignment();
 initTabs();
 initButtons();

@@ -742,6 +742,164 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .award-pts    { font-weight: 800; color: var(--green-500); flex-shrink: 0; }
 .btn-remove-award { flex-shrink: 0; }
 
+/* ─── Assignment (draw) tab ─────────────────────────── */
+.assign-intro { margin-bottom: 16px; }
+.assign-title { font-size: 1.5rem; font-weight: 900; color: var(--green-700); }
+.assign-sub { font-size: .88rem; color: var(--gray-600); margin-top: 2px; }
+
+.assign-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 820px) { .assign-grid { grid-template-columns: 1fr; } }
+
+.assign-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+.assign-head {
+  font-size: .9rem;
+  font-weight: 800;
+  color: var(--green-700);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--gold);
+}
+.assign-subhead {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--gray-400);
+  margin-bottom: 6px;
+}
+
+/* Owner entry fields */
+.owner-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.own-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.own-num { font-size: .62rem; font-weight: 700; color: var(--green-500); white-space: nowrap; }
+.own-input {
+  border: none; background: transparent; outline: none;
+  font-size: .82rem; font-weight: 600; width: 100%;
+  font-family: inherit; color: var(--text);
+}
+.assign-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Draw round status */
+.draw-roundinfo {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.round-badge {
+  background: var(--green-700); color: var(--white);
+  font-weight: 800; font-size: .82rem;
+  padding: 5px 12px; border-radius: 20px;
+}
+.round-prog { font-size: .8rem; color: var(--gray-600); font-weight: 600; }
+
+/* Slot-machine reel */
+.draw-reel {
+  height: 110px;
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: linear-gradient(135deg, var(--green-900), var(--green-700));
+  border: 3px solid var(--gold);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  box-shadow: inset 0 0 30px rgba(0,0,0,.4);
+}
+.draw-reel.landed { animation: pop .5s ease; }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
+.reel-flag { font-size: 2.6rem; line-height: 1; }
+.reel-flag.big { font-size: 3.4rem; }
+.reel-name {
+  font-size: 1.8rem; font-weight: 900; color: var(--white);
+  letter-spacing: -.5px;
+}
+.reel-name.big { color: var(--gold); font-size: 2.1rem; }
+
+.draw-reveal {
+  text-align: center; font-size: 1.1rem; color: var(--green-700);
+  min-height: 28px; margin-bottom: 12px; font-weight: 600;
+}
+.draw-reveal strong { color: var(--green-900); }
+
+/* Team list for the round */
+.draw-teamlist-wrap { margin-top: 12px; }
+.draw-teamlist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.pot-team {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: .8rem;
+}
+.pot-team.taken { background: var(--green-bg, rgba(45,168,88,.1)); border-color: var(--green-400); opacity: .75; }
+.pot-flag { font-size: 1rem; flex-shrink: 0; }
+.pot-name { font-weight: 600; flex-shrink: 0; }
+.pot-owners {
+  margin-left: auto; font-size: .7rem; color: var(--green-700);
+  font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Completion banner */
+.draw-done {
+  display: none;
+  background: linear-gradient(135deg, var(--green-900), var(--green-700));
+  color: var(--gold);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 14px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.05rem;
+  margin: 16px 0;
+}
+
+/* Summary table */
+.summary-card { margin-top: 18px; }
+.sum-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.sum-table thead th {
+  background: var(--green-700); color: var(--white);
+  padding: 7px 8px; text-align: center;
+  font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.sum-table thead th:first-child { text-align: left; }
+.sum-table td {
+  padding: 6px 8px; text-align: center;
+  border-bottom: 1px solid var(--gray-100);
+}
+.sum-table td:first-child { text-align: left; }
+.sum-table tbody tr:nth-child(even) { background: var(--gray-50); }
+.sum-owner { font-weight: 700; white-space: nowrap; }
+.sum-team { white-space: nowrap; font-size: .78rem; }
+.sum-empty { color: var(--gray-400); }
+.sum-total { font-weight: 900; color: var(--green-700); }
+
 /* ─── Print styles ──────────────────────────────────── */
 @media print {
   @page { size: A3 landscape; margin: 8mm; }
@@ -852,4 +1010,11 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   .sw-chip { font-size: .68rem; padding: 1px 4px; }
   .sw-awards-section { margin-top: 8px; padding: 8px; }
   .sw-award-row { padding: 3px 6px; font-size: .72rem; }
+
+  /* Assignment: print only the summary table on its own page */
+  #tab-assignment { page-break-before: always; margin-top: 0; }
+  .assign-intro, .assign-grid, .draw-done { display: none !important; }
+  .summary-card { box-shadow: none; border: 1px solid #bbb; break-inside: avoid; margin-top: 0; }
+  .sum-table { font-size: .72rem; }
+  .sum-table th, .sum-table td { padding: 4px 6px; }
 }
