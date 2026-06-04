@@ -187,6 +187,11 @@ const SAMPLE_SCORES = {
   L_3:{h:'1',a:'0'}, L_4:{h:'2',a:'0'}, L_5:{h:'0',a:'1'}
 };
 
+// Teams that support two sweepstake owners (top 6 + bottom 6 for balance)
+// Top: Spain H0, France I0, Portugal K0, England L0, Argentina J0, Brazil C0
+// Bottom: Cape Verde H1, Qatar B2, Haiti C2, Jordan J3, Iraq I2, Curaçao E1
+const DUAL_OWNER_TEAMS = new Set(['C0','C2','B2','E1','H0','H1','I0','I2','J0','J3','K0','L0']);
+
 // ═══════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════
@@ -233,7 +238,7 @@ function makeKO() {
 }
 
 function freshState() {
-  return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(), owners: {}, awards: [] };
+  return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(), owners: {}, owners2: {}, awards: [] };
 }
 
 let S;
@@ -241,9 +246,10 @@ let S;
   try {
     const raw = localStorage.getItem('wc2026v2');
     S = raw ? JSON.parse(raw) : freshState();
-    if (!S.ko)     S.ko     = makeKO();
-    if (!S.owners) S.owners = {};
-    if (!S.awards) S.awards = [];
+    if (!S.ko)      S.ko      = makeKO();
+    if (!S.owners)  S.owners  = {};
+    if (!S.owners2) S.owners2 = {};
+    if (!S.awards)  S.awards  = [];
   } catch(e) {
     S = freshState();
   }
@@ -423,11 +429,19 @@ function calcSweepstake() {
   const ownerTeams = {};
   GROUPS.forEach(g => {
     for (let i = 0; i < 4; i++) {
-      const key   = `${g}${i}`;
-      const owner = (S.owners[key] || '').trim();
-      if (!owner) return;
-      if (!ownerTeams[owner]) ownerTeams[owner] = [];
-      ownerTeams[owner].push(key);
+      const key = `${g}${i}`;
+      const o1  = (S.owners[key]  || '').trim();
+      const o2  = (S.owners2[key] || '').trim();
+
+      // Collect unique owners for this team; if o1 === o2, count only once
+      const teamOwners = new Set();
+      if (o1) teamOwners.add(o1);
+      if (o2 && o2 !== o1) teamOwners.add(o2);
+
+      teamOwners.forEach(owner => {
+        if (!ownerTeams[owner]) ownerTeams[owner] = [];
+        ownerTeams[owner].push(key);
+      });
     }
   });
 
@@ -483,17 +497,28 @@ function standingsHTML(g) {
 
 function groupHTML(g) {
   const names  = [0,1,2,3].map(i => teamName(`${g}${i}`));
-  const owners = [0,1,2,3].map(i => S.owners[`${g}${i}`] || '');
 
-  const teamSlots = names.map((n, i) => `
-    <div class="team-slot">
-      <span class="slot-num">${i+1}</span>
-      <span class="slot-flag" id="sf-${g}-${i}">${getFlag(n)}</span>
-      <input id="ti-${g}-${i}" class="team-name-input"
-             type="text" value="${esc(n)}" maxlength="24" placeholder="Team ${g}${i+1}">
-      <input id="ow-${g}-${i}" class="owner-input"
-             type="text" value="${esc(owners[i])}" maxlength="30" placeholder="Owner">
-    </div>`).join('');
+  const teamSlots = names.map((n, i) => {
+    const key   = `${g}${i}`;
+    const dual  = DUAL_OWNER_TEAMS.has(key);
+    const o1    = S.owners[key]  || '';
+    const o2    = S.owners2[key] || '';
+    const ownerFields = dual
+      ? `<input id="ow-${g}-${i}"  class="owner-input owner-sm" type="text"
+                value="${esc(o1)}" maxlength="6" placeholder="O1">
+         <input id="ow2-${g}-${i}" class="owner-input owner-sm" type="text"
+                value="${esc(o2)}" maxlength="6" placeholder="O2">`
+      : `<input id="ow-${g}-${i}" class="owner-input owner-sm" type="text"
+                value="${esc(o1)}" maxlength="6" placeholder="Owner">`;
+    return `
+      <div class="team-slot">
+        <span class="slot-num">${i+1}</span>
+        <span class="slot-flag" id="sf-${g}-${i}">${getFlag(n)}</span>
+        <input id="ti-${g}-${i}" class="team-name-input"
+               type="text" value="${esc(n)}" maxlength="24" placeholder="Team ${g}${i+1}">
+        ${ownerFields}
+      </div>`;
+  }).join('');
 
   const matchBlocks = FIXTURES[g].map((fx, fIdx) => {
     const { pairIdx, flipped } = fixtureInfo(fx.home, fx.away);
@@ -569,12 +594,22 @@ function renderGroups() {
         refreshLeaderboard();
       });
 
-      // Owner input — save on input, refresh leaderboard + awards dropdown on change
+      // Owner 1 input
       document.getElementById(`ow-${g}-${i}`)?.addEventListener('input', e => {
         S.owners[`${g}${i}`] = e.target.value;
         save();
       });
       document.getElementById(`ow-${g}-${i}`)?.addEventListener('change', () => {
+        refreshLeaderboard();
+        rebuildAwardDropdown();
+      });
+
+      // Owner 2 input (dual-owner teams only — optional chaining silently skips others)
+      document.getElementById(`ow2-${g}-${i}`)?.addEventListener('input', e => {
+        S.owners2[`${g}${i}`] = e.target.value;
+        save();
+      });
+      document.getElementById(`ow2-${g}-${i}`)?.addEventListener('change', () => {
         refreshLeaderboard();
         rebuildAwardDropdown();
       });
@@ -729,7 +764,14 @@ function renderKnockout() {
 function buildSummaryHTML(rows) {
   const leader     = rows[0] ? `${esc(rows[0].owner)} · ${rows[0].total} pts` : '–';
   const ownerCount = rows.length;
-  const teamCount  = Object.values(S.owners).filter(o => o && o.trim()).length;
+  // Count distinct team slots that have at least one owner assigned
+  const teamCount = GROUPS.reduce((n, g) => {
+    for (let i = 0; i < 4; i++) {
+      const k = `${g}${i}`;
+      if ((S.owners[k]||'').trim() || (S.owners2[k]||'').trim()) n++;
+    }
+    return n;
+  }, 0);
   const awardCount = S.awards.length;
 
   return `
@@ -794,6 +836,13 @@ function buildTableHTML(rows) {
     </table>`;
 }
 
+function ownerDisplay(key) {
+  const o1 = (S.owners[key]  || '').trim();
+  const o2 = (S.owners2[key] || '').trim();
+  const parts = [o1, (o2 && o2 !== o1) ? o2 : ''].filter(Boolean);
+  return parts.join('/');
+}
+
 function buildAwardsHTML() {
   // Build team dropdown options
   let opts = '<option value="">Select a team…</option>';
@@ -801,17 +850,18 @@ function buildAwardsHTML() {
     for (let i = 0; i < 4; i++) {
       const k = `${g}${i}`;
       const n = teamName(k);
-      const o = S.owners[k] ? ` · ${S.owners[k]}` : '';
-      opts += `<option value="${esc(k)}">${getFlag(n)} ${esc(n)}${o}</option>`;
+      const od = ownerDisplay(k);
+      opts += `<option value="${esc(k)}">${getFlag(n)} ${esc(n)}${od ? ` · ${od}` : ''}</option>`;
     }
   });
 
   const awardList = S.awards.length === 0
     ? '<p class="sw-empty">No player awards added yet.</p>'
     : S.awards.map(a => {
-        const n = teamName(a.teamKey);
-        const o = S.owners[a.teamKey]
-          ? ` → <strong>${esc(S.owners[a.teamKey])}</strong>`
+        const n  = teamName(a.teamKey);
+        const od = ownerDisplay(a.teamKey);
+        const o  = od
+          ? ` → <strong>${esc(od)}</strong>`
           : ` <span class="sw-warn">(no owner)</span>`;
         return `
           <div class="sw-award-row">
@@ -844,8 +894,8 @@ function rebuildAwardDropdown() {
     for (let i = 0; i < 4; i++) {
       const k = `${g}${i}`;
       const n = teamName(k);
-      const o = S.owners[k] ? ` · ${S.owners[k]}` : '';
-      opts += `<option value="${esc(k)}">${getFlag(n)} ${esc(n)}${o}</option>`;
+      const od = ownerDisplay(k);
+      opts += `<option value="${esc(k)}">${getFlag(n)} ${esc(n)}${od ? ` · ${od}` : ''}</option>`;
     }
   });
   sel.innerHTML = opts;
@@ -858,9 +908,9 @@ function bindAwardEvents() {
 
   sel?.addEventListener('change', () => {
     if (!preview || !sel.value) { if (preview) preview.innerHTML = ''; return; }
-    const k = sel.value, o = S.owners[k], n = teamName(k);
-    preview.innerHTML = o && o.trim()
-      ? `<span class="sw-preview-ok">Owner: <strong>${esc(o)}</strong></span>`
+    const k = sel.value, od = ownerDisplay(k), n = teamName(k);
+    preview.innerHTML = od
+      ? `<span class="sw-preview-ok">Owner: <strong>${esc(od)}</strong></span>`
       : `<span class="sw-warn">⚠ No owner assigned to ${esc(n)}</span>`;
   });
 
@@ -960,10 +1010,11 @@ function initButtons() {
 
   document.getElementById('btn-reset').addEventListener('click', () => {
     if (!confirm('Reset all scores and knockout bracket?\nThis cannot be undone.')) return;
-    const hadOwners = Object.values(S.owners).some(v => v && v.trim());
+    const hadOwners = Object.values(S.owners).some(v => v && v.trim()) ||
+                      Object.values(S.owners2).some(v => v && v.trim());
     S.scores = {};
     S.ko     = makeKO();
-    if (hadOwners && confirm('Also reset owner names?')) S.owners = {};
+    if (hadOwners && confirm('Also reset owner names?')) { S.owners = {}; S.owners2 = {}; }
     save();
     renderGroups();
     renderKnockout();

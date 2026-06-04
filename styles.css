@@ -181,6 +181,14 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   font-family: inherit;
 }
 .owner-input::placeholder { color: var(--gray-400); font-style: italic; }
+/* Compact fixed-width owner field — used for both single and dual slots */
+.owner-sm {
+  flex: 0 0 52px;
+  width: 52px;
+  padding-left: 4px;
+  padding-right: 4px;
+  font-size: .72rem;
+}
 
 /* Match rows */
 .section-label {
