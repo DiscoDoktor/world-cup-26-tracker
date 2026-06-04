@@ -63,6 +63,8 @@ h1 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.4px; line-height: 1
 }
 .btn:hover  { opacity: .85; transform: translateY(-1px); }
 .btn:active { transform: translateY(0); }
+.btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .btn-gold    { background: var(--gold);    color: var(--text); }
 .btn-danger  { background: var(--red);     color: var(--white); }
 .btn-outline { background: rgba(255,255,255,.15); color: var(--white); border: 1px solid rgba(255,255,255,.3); }
@@ -76,7 +78,10 @@ h1 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.4px; line-height: 1
   padding: 0 20px;
   gap: 2px;
   border-bottom: 3px solid var(--gold);
+  overflow-x: auto;            /* scroll instead of wrapping on narrow screens */
+  scrollbar-width: none;
 }
+.tab-nav::-webkit-scrollbar { display: none; }
 .tab-btn {
   padding: 11px 18px;
   background: transparent;
@@ -87,15 +92,19 @@ h1 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.4px; line-height: 1
   cursor: pointer;
   border-bottom: 3px solid transparent;
   margin-bottom: -3px;
-  transition: color .15s;
+  transition: color .15s, border-color .15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .tab-btn:hover  { color: #fff; }
 .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+.tab-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; border-radius: 4px; }
 
 /* ─── Main content ──────────────────────────────────── */
 main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .tab-pane { display: none; }
-.tab-pane.active { display: block; }
+.tab-pane.active { display: block; animation: fadeIn .25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* ─── Groups grid ───────────────────────────────────── */
 #tab-groups {
@@ -802,6 +811,18 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   font-family: inherit; color: var(--text);
 }
 .assign-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.owner-status {
+  margin-top: 8px;
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--green-500);
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity .2s, transform .2s;
+  min-height: 1em;
+}
+.owner-status.show { opacity: 1; transform: none; }
+.owner-status.warn { color: var(--red); }
 
 /* Draw round status */
 .draw-roundinfo {
@@ -899,6 +920,55 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .sum-team { white-space: nowrap; font-size: .78rem; }
 .sum-empty { color: var(--gray-400); }
 .sum-total { font-weight: 900; color: var(--green-700); }
+
+/* ─── Polish: hovers, focus rings, scrollbars, motion ── */
+
+/* Subtle lift on the main cards (shadow only — no layout shift) */
+.group-card,
+.ko-card,
+.assign-card,
+.sw-stat,
+.sw-table-section,
+.sw-awards-section { transition: box-shadow .15s ease; }
+.group-card:hover  { box-shadow: 0 6px 22px rgba(0,0,0,.13); }
+.ko-card:hover     { box-shadow: 0 5px 16px rgba(0,0,0,.32); }
+.sw-stat:hover     { box-shadow: 0 5px 16px rgba(0,0,0,.12); }
+
+/* Highlight a team/owner field group when any input inside is focused */
+.team-slot:focus-within,
+.own-field:focus-within,
+.team-input-wrap:focus-within {
+  border-color: var(--green-500);
+  box-shadow: 0 0 0 2px rgba(26,122,64,.14);
+}
+
+/* Consistent focus ring for standalone text inputs */
+.own-input:focus,
+.award-text-input:focus,
+.award-team-select:focus { outline: none; }
+
+/* Tidy scrollbar for the knockout bracket */
+.bracket-scroll::-webkit-scrollbar { height: 10px; }
+.bracket-scroll::-webkit-scrollbar-track { background: transparent; }
+.bracket-scroll::-webkit-scrollbar-thumb {
+  background: var(--gray-200);
+  border-radius: 6px;
+}
+.bracket-scroll::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+
+/* Gentle idle pulse on the draw reel before the first spin */
+.draw-reel .reel-name:only-child { animation: idlePulse 1.8s ease-in-out infinite; }
+@keyframes idlePulse { 0%,100% { opacity: .65; } 50% { opacity: 1; } }
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  .tab-pane.active { animation: none; }
+}
 
 /* ─── Print styles ──────────────────────────────────── */
 @media print {

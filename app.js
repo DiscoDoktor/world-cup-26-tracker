@@ -829,8 +829,9 @@ function koCardHTML(round, idx, side) {
     round === 'qf'  ? `Quarter-Final · Match ${idx+1}` :
                       `Semi-Final · Match ${idx+1}`;
 
+  // Only show a date line when an actual kick-off is known (declutters the bracket)
   const dt = KO_DATES[`${round}-${idx}`];
-  const dateLine = dt ? `${fmtDate(dt.date)} · ${dt.time}` : 'Date TBC';
+  const dateHTML = dt ? `<div class="ko-date">${fmtDate(dt.date)} · ${dt.time}</div>` : '';
 
   // Level scores with no pens pick yet → prompt for a winner
   const bothScored = m.hs !== '' && m.as !== '' &&
@@ -883,7 +884,7 @@ function koCardHTML(round, idx, side) {
           <span class="ko-label">${label}</span>
           ${winner ? `<span class="ko-winner-label">→ ${getFlag(winner)} ${esc(winner)}</span>` : ''}
         </div>
-        <div class="ko-date">${dateLine}</div>
+        ${dateHTML}
         <div class="ko-card-body">
           <div class="ko-row">
             ${teamBlock(hSlot, m.h, hClass)}
@@ -1565,6 +1566,7 @@ function renderAssignment() {
           <button id="btn-save-owners" class="btn btn-green btn-sm">💾 Save owners</button>
           <button id="btn-clear-assign" class="btn btn-danger btn-sm">🗑 Clear assignment</button>
         </div>
+        <div id="owner-status" class="owner-status"></div>
       </div>
 
       <div class="assign-card">
@@ -1604,8 +1606,15 @@ function renderAssignment() {
     const filled = S.draw.names.filter(n => n && n.trim());
     const dupes = filled.length !== new Set(filled.map(n => n.trim().toLowerCase())).size;
     save();
-    if (dupes) alert('Saved — note: some owner names are duplicates. Shared teams may then show the same name twice.');
-    else alert(`Saved ${filled.length} owner name${filled.length === 1 ? '' : 's'}.`);
+    const status = document.getElementById('owner-status');
+    if (status) {
+      status.className = 'owner-status show' + (dupes ? ' warn' : '');
+      status.textContent = dupes
+        ? `⚠ Saved ${filled.length} — but some names are duplicates`
+        : `✓ Saved ${filled.length} owner name${filled.length === 1 ? '' : 's'}`;
+      clearTimeout(status._t);
+      status._t = setTimeout(() => { status.className = 'owner-status'; }, 2600);
+    }
   });
   document.getElementById('btn-clear-assign')?.addEventListener('click', clearAssignment);
   document.getElementById('btn-draw-next')?.addEventListener('click', drawNext);
