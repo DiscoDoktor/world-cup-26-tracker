@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>World Cup 2026 Wall Chart &amp; Results Tracker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="header-title">
+        <span class="ball">⚽</span>
+        <div>
+          <h1>World Cup 2026</h1>
+          <p class="subtitle">Wall Chart &amp; Results Tracker</p>
+        </div>
+      </div>
+      <div class="header-btns">
+        <button id="btn-sample"  class="btn btn-outline">📋 Sample Data</button>
+        <button id="btn-reset"   class="btn btn-danger">↺ Reset</button>
+        <button id="btn-print"   class="btn btn-gold">🖨 Print</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tab-nav" id="tab-nav">
+    <button class="tab-btn active" data-tab="groups">🏟 Group Stage</button>
+    <button class="tab-btn"        data-tab="knockout">🏆 Knockout Stage</button>
+  </nav>
+
+  <main>
+    <div id="tab-groups"   class="tab-pane active"></div>
+    <div id="tab-knockout" class="tab-pane"></div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
