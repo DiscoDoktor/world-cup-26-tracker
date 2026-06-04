@@ -641,72 +641,124 @@ function renderGroups() {
 // HTML GENERATORS — KNOCKOUT
 // ═══════════════════════════════════════════════════════════════════
 
-function koCardHTML(round, idx) {
+// Optional knockout fixture dates — fill in "round-idx" keys when known,
+// e.g. KO_DATES['r32-0'] = { date:'2026-06-29', time:'20:00' }. Empty = "TBC".
+const KO_DATES = {};
+
+// Turn a stored slot label into a friendly placeholder for display only.
+// Stored value stays "1A"/"2B"/"3rd-1" so populateR32() still matches it.
+function prettySlot(s) {
+  if (/^1[A-L]$/.test(s)) return `Winner Grp ${s[1]}`;
+  if (/^2[A-L]$/.test(s)) return `Runner-up Grp ${s[1]}`;
+  if (/^3rd-(\d+)$/.test(s)) return `3rd Place #${s.split('-')[1]}`;
+  return s;
+}
+
+function isKoSlot(s) {
+  return !s || /^[12][A-L]$/.test(s) || /^3rd/.test(s);
+}
+
+// Build one bracket match card. `side` is 'l' | 'r' | 'c' (centre) for connectors.
+function koCardHTML(round, idx, side) {
   const m = S.ko[round][idx];
   const winner = koWinner(m);
   const isFinal = round === 'final';
   const isTp    = round === 'tp';
 
-  const isSlot = (s) => !s || /^[12][A-L]$/.test(s) || /^3rd/.test(s);
-  const hSlot = isSlot(m.h), aSlot = isSlot(m.a);
+  const hSlot = isKoSlot(m.h), aSlot = isKoSlot(m.a);
   const hClass = hSlot ? 'ko-name empty' : winner === m.h ? 'ko-name winner-name' : 'ko-name';
   const aClass = aSlot ? 'ko-name empty' : winner === m.a ? 'ko-name winner-name' : 'ko-name';
 
-  const label = isFinal ? '🏆 Final' : isTp ? '🥉 Third Place' :
-    round === 'r32' ? `R32 · M${idx+1}` :
-    round === 'r16' ? `R16 · M${idx+1}` :
-    round === 'qf'  ? `QF · M${idx+1}`  : `SF · M${idx+1}`;
+  const label = isFinal ? '🏆 Final' : isTp ? '🥉 Third-Place Play-off' :
+    round === 'r32' ? `Round of 32 · Match ${idx+1}` :
+    round === 'r16' ? `Round of 16 · Match ${idx+1}` :
+    round === 'qf'  ? `Quarter-Final · Match ${idx+1}` :
+                      `Semi-Final · Match ${idx+1}`;
 
-  const showPens = !!(m.hs !== '' && m.as !== '' &&
-    !isNaN(parseInt(m.hs)) && !isNaN(parseInt(m.as)) &&
-    parseInt(m.hs) === parseInt(m.as));
+  const dt = KO_DATES[`${round}-${idx}`];
+  const dateLine = dt ? `${fmtDate(dt.date)} · ${dt.time}` : 'Date TBC';
 
-  const pensHTML = showPens ? `
+  // Level scores with no pens pick yet → prompt for a winner
+  const bothScored = m.hs !== '' && m.as !== '' &&
+    !isNaN(parseInt(m.hs)) && !isNaN(parseInt(m.as));
+  const isLevel = bothScored && parseInt(m.hs) === parseInt(m.as);
+
+  const pensHTML = isLevel ? `
     <div class="pens-strip">
-      <span>Pens:</span>
+      <span>${m.pens ? 'Pens:' : '⚠ Level — pick winner:'}</span>
       <button class="pens-pick${m.pens==='h'?' chosen':''}"
               data-r="${round}" data-i="${idx}" data-p="h">${esc(m.h||'—')}</button>
       <button class="pens-pick${m.pens==='a'?' chosen':''}"
               data-r="${round}" data-i="${idx}" data-p="a">${esc(m.a||'—')}</button>
     </div>` : '';
 
-  const kf = (slot, name) => slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
+  const nameCell = (slot, name, cls) => {
+    const disp = slot ? prettySlot(name || 'TBD') : esc(name);
+    const flag = slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
+    return `<span class="${cls}">${flag}${disp}</span>`;
+  };
+
+  // Incoming connector stub(s) — the Round of 32 (outermost) receives nothing;
+  // the Final is fed from both the left and right semi-finals.
+  let ci = '';
+  if (isFinal) {
+    ci = '<span class="ci ci-l"></span><span class="ci ci-r"></span>';
+  } else if (round !== 'tp' && round !== 'r32') {
+    if (side === 'l') ci = '<span class="ci ci-l"></span>';
+    if (side === 'r') ci = '<span class="ci ci-r"></span>';
+  }
 
   return `
-    <div class="ko-card${isFinal?' final-card':''}" id="kc-${round}-${idx}">
-      <div class="ko-card-head">
-        <span>${label}</span>
-        ${winner ? `<span class="ko-winner-label">→ ${getFlag(winner)} ${esc(winner)}</span>` : ''}
-      </div>
-      <div class="ko-card-body">
-        <div class="ko-row">
-          <span class="${hClass}">${kf(hSlot,m.h)}${esc(m.h||'TBD')}</span>
-          <input class="ko-score" id="ks-${round}-${idx}-h" type="number" min="0" max="99" value="${esc(m.hs)}">
+    <div class="mw mw-${side}">
+      ${ci}
+      <div class="ko-card${isFinal?' final-card':''}${isTp?' tp-card':''}" id="kc-${round}-${idx}">
+        <div class="ko-card-head">
+          <span class="ko-label">${label}</span>
+          ${winner ? `<span class="ko-winner-label">→ ${getFlag(winner)} ${esc(winner)}</span>` : ''}
         </div>
-        <div class="ko-row">
-          <span class="${aClass}">${kf(aSlot,m.a)}${esc(m.a||'TBD')}</span>
-          <input class="ko-score" id="ks-${round}-${idx}-a" type="number" min="0" max="99" value="${esc(m.as)}">
+        <div class="ko-date">${dateLine}</div>
+        <div class="ko-card-body">
+          <div class="ko-row">
+            ${nameCell(hSlot, m.h, hClass)}
+            <input class="ko-score" id="ks-${round}-${idx}-h" type="number" min="0" max="99" value="${esc(m.hs)}">
+          </div>
+          <div class="ko-row">
+            ${nameCell(aSlot, m.a, aClass)}
+            <input class="ko-score" id="ks-${round}-${idx}-a" type="number" min="0" max="99" value="${esc(m.as)}">
+          </div>
+          ${pensHTML}
         </div>
-        ${pensHTML}
       </div>
     </div>`;
+}
+
+// A single round column: list of global indices, side for connectors
+function roundColHTML(round, indices, side) {
+  const cards = indices.map(i => koCardHTML(round, i, side)).join('');
+  return `<div class="round round-${round}-${side}" data-round="${round}">${cards}</div>`;
 }
 
 function renderKnockout() {
   const pane = document.getElementById('tab-knockout');
   const finalWinner = koWinner(S.ko.final[0]);
 
-  let roundsHTML = '';
-  ROUND_ORDER.forEach(round => {
-    const meta = ROUND_META[round];
-    const cards = Array.from({ length: meta.size }, (_, i) => koCardHTML(round, i)).join('');
-    const gridClass = meta.size >= 8 ? 'ko-grid' : meta.size >= 2 ? 'ko-grid small' : 'ko-grid one';
-    roundsHTML += `
-      <div class="round-section">
-        <div class="round-title">${meta.label}</div>
-        <div class="${gridClass}">${cards}</div>
-      </div>`;
-  });
+  // Left half feeds the Final's home slot, right half feeds the away slot.
+  // This matches advanceAll(): r32[0-7]→…→sf[0]→final.h ; r32[8-15]→…→sf[1]→final.a
+  const leftHTML = `
+    <div class="side side-l">
+      ${roundColHTML('r32', [0,1,2,3,4,5,6,7], 'l')}
+      ${roundColHTML('r16', [0,1,2,3], 'l')}
+      ${roundColHTML('qf',  [0,1], 'l')}
+      ${roundColHTML('sf',  [0], 'l')}
+    </div>`;
+
+  const rightHTML = `
+    <div class="side side-r">
+      ${roundColHTML('sf',  [1], 'r')}
+      ${roundColHTML('qf',  [2,3], 'r')}
+      ${roundColHTML('r16', [4,5,6,7], 'r')}
+      ${roundColHTML('r32', [8,9,10,11,12,13,14,15], 'r')}
+    </div>`;
 
   const championHTML = finalWinner ? `
     <div class="champion-banner">
@@ -715,14 +767,33 @@ function renderKnockout() {
       <p>World Cup 2026 Champions 🏆</p>
     </div>` : '';
 
+  const centerHTML = `
+    <div class="center-col">
+      <div class="final-block">
+        <div class="final-crown">🏆 THE FINAL</div>
+        ${koCardHTML('final', 0, 'c')}
+        ${championHTML}
+      </div>
+      <div class="tp-block">
+        ${koCardHTML('tp', 0, 'c')}
+      </div>
+    </div>`;
+
   pane.innerHTML = `
     <div class="top-bar">
       <button class="btn btn-green btn-sm" id="btn-populate">
         ⚡ Auto-fill R32 from Group Results
       </button>
     </div>
-    ${roundsHTML}${championHTML}`;
+    <div class="bracket-scroll">
+      <div class="bracket">
+        ${leftHTML}
+        ${centerHTML}
+        ${rightHTML}
+      </div>
+    </div>`;
 
+  // Score inputs — update on input, re-render bracket on change
   ROUND_ORDER.forEach(round => {
     Array.from({ length: ROUND_META[round].size }, (_, idx) => {
       ['h','a'].forEach(side => {
