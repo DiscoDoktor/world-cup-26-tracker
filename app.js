@@ -42,7 +42,6 @@ const REAL_TEAMS = {
 
 const SAMPLE_TEAMS = REAL_TEAMS;
 
-// National flag emoji for every team
 const FLAGS = {
   'Mexico':'🇲🇽',             'South Africa':'🇿🇦',      'South Korea':'🇰🇷',
   'Czech Republic':'🇨🇿',     'Canada':'🇨🇦',            'Bosnia-Herzegovina':'🇧🇦',
@@ -62,7 +61,6 @@ const FLAGS = {
   'Croatia':'🇭🇷',            'Ghana':'🇬🇭',              'Panama':'🇵🇦'
 };
 
-// Official fixture schedule — home/away are team indices (0–3) within each group
 const FIXTURES = {
   A: [
     { date:'2026-06-11', time:'20:00', home:0, away:1 },
@@ -162,41 +160,29 @@ const FIXTURES = {
   ]
 };
 
-// Sample scores — keyed by MATCH_PAIRS index (pair-canonical, not fixture order)
 const SAMPLE_SCORES = {
   A_0:{h:'3',a:'1'}, A_1:{h:'2',a:'0'}, A_2:{h:'1',a:'0'},
   A_3:{h:'2',a:'1'}, A_4:{h:'2',a:'0'}, A_5:{h:'1',a:'0'},
-
   B_0:{h:'2',a:'1'}, B_1:{h:'3',a:'0'}, B_2:{h:'2',a:'0'},
   B_3:{h:'1',a:'1'}, B_4:{h:'2',a:'0'}, B_5:{h:'1',a:'0'},
-
   C_0:{h:'2',a:'0'}, C_1:{h:'3',a:'1'}, C_2:{h:'4',a:'0'},
   C_3:{h:'1',a:'0'}, C_4:{h:'2',a:'0'}, C_5:{h:'1',a:'1'},
-
   D_0:{h:'2',a:'1'}, D_1:{h:'1',a:'0'}, D_2:{h:'3',a:'0'},
   D_3:{h:'2',a:'1'}, D_4:{h:'2',a:'0'}, D_5:{h:'1',a:'0'},
-
   E_0:{h:'1',a:'0'}, E_1:{h:'2',a:'1'}, E_2:{h:'3',a:'0'},
   E_3:{h:'1',a:'1'}, E_4:{h:'2',a:'0'}, E_5:{h:'1',a:'0'},
-
   F_0:{h:'2',a:'0'}, F_1:{h:'2',a:'1'}, F_2:{h:'3',a:'0'},
   F_3:{h:'1',a:'0'}, F_4:{h:'2',a:'0'}, F_5:{h:'1',a:'0'},
-
   G_0:{h:'2',a:'1'}, G_1:{h:'2',a:'0'}, G_2:{h:'3',a:'0'},
   G_3:{h:'1',a:'1'}, G_4:{h:'2',a:'0'}, G_5:{h:'0',a:'0'},
-
   H_0:{h:'1',a:'1'}, H_1:{h:'2',a:'0'}, H_2:{h:'2',a:'0'},
   H_3:{h:'1',a:'0'}, H_4:{h:'2',a:'1'}, H_5:{h:'0',a:'0'},
-
   I_0:{h:'2',a:'1'}, I_1:{h:'1',a:'0'}, I_2:{h:'2',a:'0'},
   I_3:{h:'1',a:'1'}, I_4:{h:'2',a:'0'}, I_5:{h:'1',a:'0'},
-
   J_0:{h:'2',a:'0'}, J_1:{h:'3',a:'0'}, J_2:{h:'4',a:'0'},
   J_3:{h:'1',a:'0'}, J_4:{h:'2',a:'0'}, J_5:{h:'1',a:'0'},
-
   K_0:{h:'1',a:'0'}, K_1:{h:'2',a:'1'}, K_2:{h:'2',a:'0'},
   K_3:{h:'0',a:'0'}, K_4:{h:'1',a:'0'}, K_5:{h:'1',a:'1'},
-
   L_0:{h:'2',a:'1'}, L_1:{h:'1',a:'0'}, L_2:{h:'3',a:'0'},
   L_3:{h:'1',a:'0'}, L_4:{h:'2',a:'0'}, L_5:{h:'0',a:'1'}
 };
@@ -213,9 +199,6 @@ function fmtDate(d) {
   return `${parseInt(p[2])} ${MONTHS[parseInt(p[1]) - 1]}`;
 }
 
-// Find pair index for a fixture, and whether the home team is in the 'away' slot of that pair.
-// Scores are always stored by pair (h = first in pair, a = second in pair).
-// When flipped, we swap which score input maps to h vs a.
 function fixtureInfo(home, away) {
   const pairIdx = MATCH_PAIRS.findIndex(([ti, tj]) =>
     (ti === home && tj === away) || (ti === away && tj === home)
@@ -228,6 +211,10 @@ function esc(s) {
   return String(s ?? '')
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function teamName(key) {
+  return S.teams[key] || REAL_TEAMS[key] || key;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -246,7 +233,7 @@ function makeKO() {
 }
 
 function freshState() {
-  return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(), owners: {} };
+  return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(), owners: {}, awards: [] };
 }
 
 let S;
@@ -254,8 +241,9 @@ let S;
   try {
     const raw = localStorage.getItem('wc2026v2');
     S = raw ? JSON.parse(raw) : freshState();
-    if (!S.ko)     S.ko     = makeKO(); // migrate old saves
+    if (!S.ko)     S.ko     = makeKO();
     if (!S.owners) S.owners = {};
+    if (!S.awards) S.awards = [];
   } catch(e) {
     S = freshState();
   }
@@ -272,7 +260,7 @@ function save() {
 function calcStandings(g) {
   const rows = [0,1,2,3].map(i => ({
     key: `${g}${i}`,
-    name: S.teams[`${g}${i}`] || REAL_TEAMS[`${g}${i}`] || `Team ${g}${i+1}`,
+    name: teamName(`${g}${i}`),
     p:0, w:0, d:0, l:0, gf:0, ga:0, gd:0, pts:0
   }));
 
@@ -352,6 +340,112 @@ function populateR32() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SWEEPSTAKE CALCULATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+// Group-stage match points for a team (by key e.g. "A0")
+function getGroupMatchPts(key) {
+  const g = key[0], i = parseInt(key[1]);
+  let pts = 0;
+  MATCH_PAIRS.forEach(([ti, tj], idx) => {
+    if (ti !== i && tj !== i) return;
+    const sc = S.scores[`${g}_${idx}`];
+    if (!sc || sc.h === '' || sc.a === '') return;
+    const h = parseInt(sc.h), a = parseInt(sc.a);
+    if (isNaN(h) || isNaN(a)) return;
+    if (ti === i) {       // team is home side of pair
+      if (h > a) pts += 2; else if (h === a) pts += 1;
+    } else {              // team is away side of pair
+      if (a > h) pts += 2; else if (h === a) pts += 1;
+    }
+  });
+  return pts;
+}
+
+// Knockout match points for a team (by key) — searches by team name in KO bracket
+function getKOMatchPts(key) {
+  const name = teamName(key);
+  let pts = 0;
+  ROUND_ORDER.forEach(round => {
+    S.ko[round].forEach(m => {
+      if (m.h !== name && m.a !== name) return;
+      if (m.hs === '' || m.as === '') return;
+      const hs = parseInt(m.hs), as = parseInt(m.as);
+      if (isNaN(hs) || isNaN(as)) return;
+      const isH = m.h === name;
+      if (m.pens === 'h' || m.pens === 'a') {
+        // Drew in regulation; pens winner gets 2, loser gets 1
+        const won = (m.pens === 'h' && isH) || (m.pens === 'a' && !isH);
+        pts += won ? 2 : 1;
+      } else if (hs === as) {
+        pts += 1; // draw
+      } else {
+        const mine = isH ? hs : as, opp = isH ? as : hs;
+        if (mine > opp) pts += 2;
+      }
+    });
+  });
+  return pts;
+}
+
+// Progression bonus: +1 per knockout round reached (R32=1 … Final win=6)
+function getProgressionBonus(key) {
+  const name = teamName(key);
+  const levels = [
+    { round:'r32', pts:1 }, { round:'r16', pts:2 },
+    { round:'qf',  pts:3 }, { round:'sf',  pts:4 },
+    { round:'final', pts:5 }
+  ];
+  let bonus = 0;
+  levels.forEach(({ round, pts }) => {
+    if (S.ko[round].some(m => m.h === name || m.a === name)) bonus = pts;
+  });
+  if (bonus === 5 && koWinner(S.ko.final[0]) === name) bonus = 6;
+  return bonus;
+}
+
+// Final placing bonus: 1st=+5, 2nd=+3, 3rd=+1
+function getPlacingBonus(key) {
+  const name = teamName(key);
+  if (name === koWinner(S.ko.final[0])) return 5;
+  if (name === koLoser(S.ko.final[0]))  return 3;
+  if (name === koWinner(S.ko.tp[0]))    return 1;
+  return 0;
+}
+
+// Player award bonus: +3 per award linked to this team key
+function getAwardBonus(key) {
+  return S.awards.filter(a => a.teamKey === key).length * 3;
+}
+
+// Build the full sweepstake leaderboard rows
+function calcSweepstake() {
+  const ownerTeams = {};
+  GROUPS.forEach(g => {
+    for (let i = 0; i < 4; i++) {
+      const key   = `${g}${i}`;
+      const owner = (S.owners[key] || '').trim();
+      if (!owner) return;
+      if (!ownerTeams[owner]) ownerTeams[owner] = [];
+      ownerTeams[owner].push(key);
+    }
+  });
+
+  const rows = Object.entries(ownerTeams).map(([owner, keys]) => {
+    const matchPts     = keys.reduce((s, k) => s + getGroupMatchPts(k) + getKOMatchPts(k), 0);
+    const progBonus    = keys.reduce((s, k) => s + getProgressionBonus(k), 0);
+    const placingBonus = keys.reduce((s, k) => s + getPlacingBonus(k), 0);
+    const awardBonus   = keys.reduce((s, k) => s + getAwardBonus(k), 0);
+    const total        = matchPts + progBonus + placingBonus + awardBonus;
+    return { owner, keys, matchPts, progBonus, placingBonus, awardBonus, total };
+  });
+
+  return rows.sort((a, b) =>
+    b.total - a.total || b.matchPts - a.matchPts || a.owner.localeCompare(b.owner)
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // HTML GENERATORS — GROUPS
 // ═══════════════════════════════════════════════════════════════════
 
@@ -388,7 +482,7 @@ function standingsHTML(g) {
 }
 
 function groupHTML(g) {
-  const names  = [0,1,2,3].map(i => S.teams[`${g}${i}`]  || REAL_TEAMS[`${g}${i}`] || `Team ${g}${i+1}`);
+  const names  = [0,1,2,3].map(i => teamName(`${g}${i}`));
   const owners = [0,1,2,3].map(i => S.owners[`${g}${i}`] || '');
 
   const teamSlots = names.map((n, i) => `
@@ -404,18 +498,16 @@ function groupHTML(g) {
   const matchBlocks = FIXTURES[g].map((fx, fIdx) => {
     const { pairIdx, flipped } = fixtureInfo(fx.home, fx.away);
     const sc = S.scores[`${g}_${pairIdx}`] || { h:'', a:'' };
-    // When flipped, the home team's score is stored in sc.a (not sc.h)
     const homeScore = flipped ? sc.a : sc.h;
     const awayScore = flipped ? sc.h : sc.a;
     const hn = names[fx.home], an = names[fx.away];
-    const hf = getFlag(hn),    af = getFlag(an);
 
     return `
       <div class="match-block">
         <div class="match-date">${fmtDate(fx.date)} · ${fx.time}</div>
         <div class="match-row">
           <span class="match-team" id="ml-${g}-${fIdx}-h">
-            <span class="mf">${hf}</span><span class="mn">${esc(hn)}</span>
+            <span class="mf">${getFlag(hn)}</span><span class="mn">${esc(hn)}</span>
           </span>
           <div class="score-wrap">
             <input class="score-input" id="sih-${g}-${fIdx}"
@@ -425,7 +517,7 @@ function groupHTML(g) {
                    type="number" min="0" max="99" value="${esc(awayScore)}">
           </div>
           <span class="match-team right" id="ml-${g}-${fIdx}-a">
-            <span class="mf">${af}</span><span class="mn">${esc(an)}</span>
+            <span class="mf">${getFlag(an)}</span><span class="mn">${esc(an)}</span>
           </span>
         </div>
       </div>`;
@@ -452,21 +544,17 @@ function renderGroups() {
   pane.innerHTML = GROUPS.map(g => groupHTML(g)).join('');
 
   GROUPS.forEach(g => {
-    // ── Team name inputs ──────────────────────────────
     for (let i = 0; i < 4; i++) {
+      // Team name input
       document.getElementById(`ti-${g}-${i}`)?.addEventListener('input', e => {
         const val = e.target.value;
         S.teams[`${g}${i}`] = val;
         save();
-
-        // Update flag in team slot without losing input focus
         const sf = document.getElementById(`sf-${g}-${i}`);
         if (sf) sf.textContent = getFlag(val);
-
-        // Update match row labels where this team appears
         FIXTURES[g].forEach((fx, fIdx) => {
-          const flag = getFlag(val);
           const text = esc(val || REAL_TEAMS[`${g}${i}`] || `Team ${g}${i+1}`);
+          const flag = getFlag(val);
           if (fx.home === i) {
             const el = document.getElementById(`ml-${g}-${fIdx}-h`);
             if (el) el.innerHTML = `<span class="mf">${flag}</span><span class="mn">${text}</span>`;
@@ -476,37 +564,38 @@ function renderGroups() {
             if (el) el.innerHTML = `<span class="mf">${flag}</span><span class="mn">${text}</span>`;
           }
         });
-
-        // Update standings table
         const st = document.getElementById(`st-${g}`);
         if (st) st.innerHTML = standingsHTML(g);
+        refreshLeaderboard();
       });
 
-      // ── Owner inputs ──────────────────────────────
+      // Owner input — save on input, refresh leaderboard + awards dropdown on change
       document.getElementById(`ow-${g}-${i}`)?.addEventListener('input', e => {
         S.owners[`${g}${i}`] = e.target.value;
         save();
       });
+      document.getElementById(`ow-${g}-${i}`)?.addEventListener('change', () => {
+        refreshLeaderboard();
+        rebuildAwardDropdown();
+      });
     }
 
-    // ── Score inputs (fixture-indexed, pair-aware) ──
+    // Score inputs (fixture-indexed, pair-aware)
     FIXTURES[g].forEach((fx, fIdx) => {
       const { pairIdx, flipped } = fixtureInfo(fx.home, fx.away);
-
       const bindScore = (side) => {
         const el = document.getElementById(`si${side}-${g}-${fIdx}`);
         if (!el) return;
         el.addEventListener('input', e => {
           if (!S.scores[`${g}_${pairIdx}`]) S.scores[`${g}_${pairIdx}`] = { h:'', a:'' };
-          // 'h' input = home team display = pair's 'h' if not flipped, pair's 'a' if flipped
           const pairSide = (side === 'h') ? (flipped ? 'a' : 'h') : (flipped ? 'h' : 'a');
           S.scores[`${g}_${pairIdx}`][pairSide] = e.target.value;
           save();
           const st = document.getElementById(`st-${g}`);
           if (st) st.innerHTML = standingsHTML(g);
+          refreshLeaderboard();
         });
       };
-
       bindScore('h');
       bindScore('a');
     });
@@ -523,12 +612,8 @@ function koCardHTML(round, idx) {
   const isFinal = round === 'final';
   const isTp    = round === 'tp';
 
-  // Slot labels like "1A", "3rd-2" have no flag yet
   const isSlot = (s) => !s || /^[12][A-L]$/.test(s) || /^3rd/.test(s);
   const hSlot = isSlot(m.h), aSlot = isSlot(m.a);
-  const hFlag = hSlot ? '' : getFlag(m.h);
-  const aFlag = aSlot ? '' : getFlag(m.a);
-
   const hClass = hSlot ? 'ko-name empty' : winner === m.h ? 'ko-name winner-name' : 'ko-name';
   const aClass = aSlot ? 'ko-name empty' : winner === m.a ? 'ko-name winner-name' : 'ko-name';
 
@@ -550,7 +635,7 @@ function koCardHTML(round, idx) {
               data-r="${round}" data-i="${idx}" data-p="a">${esc(m.a||'—')}</button>
     </div>` : '';
 
-  const flagSpan = (flag) => flag ? `<span class="kf">${flag}</span>` : '';
+  const kf = (slot, name) => slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
 
   return `
     <div class="ko-card${isFinal?' final-card':''}" id="kc-${round}-${idx}">
@@ -560,11 +645,11 @@ function koCardHTML(round, idx) {
       </div>
       <div class="ko-card-body">
         <div class="ko-row">
-          <span class="${hClass}">${flagSpan(hFlag)}${esc(m.h||'TBD')}</span>
+          <span class="${hClass}">${kf(hSlot,m.h)}${esc(m.h||'TBD')}</span>
           <input class="ko-score" id="ks-${round}-${idx}-h" type="number" min="0" max="99" value="${esc(m.hs)}">
         </div>
         <div class="ko-row">
-          <span class="${aClass}">${flagSpan(aFlag)}${esc(m.a||'TBD')}</span>
+          <span class="${aClass}">${kf(aSlot,m.a)}${esc(m.a||'TBD')}</span>
           <input class="ko-score" id="ks-${round}-${idx}-a" type="number" min="0" max="99" value="${esc(m.as)}">
         </div>
         ${pensHTML}
@@ -601,10 +686,8 @@ function renderKnockout() {
         ⚡ Auto-fill R32 from Group Results
       </button>
     </div>
-    ${roundsHTML}
-    ${championHTML}`;
+    ${roundsHTML}${championHTML}`;
 
-  // Score inputs — update state on input, re-render on change
   ROUND_ORDER.forEach(round => {
     Array.from({ length: ROUND_META[round].size }, (_, idx) => {
       ['h','a'].forEach(side => {
@@ -619,12 +702,12 @@ function renderKnockout() {
           advanceAll();
           save();
           renderKnockout();
+          refreshLeaderboard();
         });
       });
     });
   });
 
-  // Pens buttons
   pane.querySelectorAll('.pens-pick').forEach(btn => {
     btn.addEventListener('click', () => {
       const r = btn.dataset.r, i = parseInt(btn.dataset.i), p = btn.dataset.p;
@@ -632,10 +715,219 @@ function renderKnockout() {
       advanceAll();
       save();
       renderKnockout();
+      refreshLeaderboard();
     });
   });
 
   document.getElementById('btn-populate')?.addEventListener('click', populateR32);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HTML GENERATORS — SWEEPSTAKE
+// ═══════════════════════════════════════════════════════════════════
+
+function buildSummaryHTML(rows) {
+  const leader     = rows[0] ? `${esc(rows[0].owner)} · ${rows[0].total} pts` : '–';
+  const ownerCount = rows.length;
+  const teamCount  = Object.values(S.owners).filter(o => o && o.trim()).length;
+  const awardCount = S.awards.length;
+
+  return `
+    <div class="sw-stat">
+      <div class="sw-stat-val sw-leader-val">${leader}</div>
+      <div class="sw-stat-lbl">Current Leader</div>
+    </div>
+    <div class="sw-stat">
+      <div class="sw-stat-val">${ownerCount}</div>
+      <div class="sw-stat-lbl">Owners</div>
+    </div>
+    <div class="sw-stat">
+      <div class="sw-stat-val">${teamCount}</div>
+      <div class="sw-stat-lbl">Teams Assigned</div>
+    </div>
+    <div class="sw-stat">
+      <div class="sw-stat-val">${awardCount}</div>
+      <div class="sw-stat-lbl">Player Awards</div>
+    </div>`;
+}
+
+function buildTableHTML(rows) {
+  if (rows.length === 0) {
+    return `<div class="sw-empty">
+      No entries yet. Add owner names to teams in the Groups tab.
+    </div>`;
+  }
+  const medals = ['🥇','🥈','🥉'];
+  const body = rows.map((r, idx) => {
+    const teams = r.keys.map(k => {
+      const n = teamName(k);
+      return `<span class="sw-chip">${getFlag(n)} ${esc(n)}</span>`;
+    }).join('');
+    return `
+      <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
+        <td class="sw-rank-cell">${medals[idx] || idx+1}</td>
+        <td class="sw-owner-cell">${esc(r.owner)}</td>
+        <td class="sw-teams-cell">${teams}</td>
+        <td class="sw-num">${r.matchPts}</td>
+        <td class="sw-num">${r.progBonus}</td>
+        <td class="sw-num">${r.placingBonus}</td>
+        <td class="sw-num">${r.awardBonus}</td>
+        <td class="sw-total-cell">${r.total}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <table class="sw-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Owner</th>
+          <th>Teams</th>
+          <th title="Win=2 · Draw=1 · Loss=0 for every match played">Match Pts</th>
+          <th title="R32=1 · R16=2 · QF=3 · SF=4 · Final=5 · Win=6">Progression</th>
+          <th title="1st place=5 · 2nd=3 · 3rd=1">Placing</th>
+          <th title="+3 per player award">Awards</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+function buildAwardsHTML() {
+  // Build team dropdown options
+  let opts = '<option value="">Select a team…</option>';
+  GROUPS.forEach(g => {
+    for (let i = 0; i < 4; i++) {
+      const k = `${g}${i}`;
+      const n = teamName(k);
+      const o = S.owners[k] ? ` · ${S.owners[k]}` : '';
+      opts += `<option value="${esc(k)}">${getFlag(n)} ${esc(n)}${o}</option>`;
+    }
+  });
+
+  const awardList = S.awards.length === 0
+    ? '<p class="sw-empty">No player awards added yet.</p>'
+    : S.awards.map(a => {
+        const n = teamName(a.teamKey);
+        const o = S.owners[a.teamKey]
+          ? ` → <strong>${esc(S.owners[a.teamKey])}</strong>`
+          : ` <span class="sw-warn">(no owner)</span>`;
+        return `
+          <div class="sw-award-row">
+            <span class="award-badge">${esc(a.name)}</span>
+            <span class="award-team">${getFlag(n)} ${esc(n)}${o}</span>
+            <span class="award-pts">+3</span>
+            <button class="btn btn-danger btn-sm btn-remove-award" data-id="${a.id}">✕</button>
+          </div>`;
+      }).join('');
+
+  return `
+    <div class="sw-section-head">🏅 Player Awards <span class="sw-section-sub">(+3 pts each)</span></div>
+    <div class="sw-add-form">
+      <input id="award-name-input" class="award-text-input" type="text"
+             placeholder='Award name, e.g. "Golden Boot"' maxlength="50">
+      <select id="award-team-select" class="award-team-select">${opts}</select>
+      <button id="btn-add-award" class="btn btn-green btn-sm">+ Add</button>
+    </div>
+    <div id="award-owner-preview" class="award-owner-preview"></div>
+    <div class="sw-awards-list">${awardList}</div>`;
+}
+
+// Update just the team dropdown in the awards section (preserving form state)
+function rebuildAwardDropdown() {
+  const sel = document.getElementById('award-team-select');
+  if (!sel) return;
+  const cur = sel.value;
+  let opts = '<option value="">Select a team…</option>';
+  GROUPS.forEach(g => {
+    for (let i = 0; i < 4; i++) {
+      const k = `${g}${i}`;
+      const n = teamName(k);
+      const o = S.owners[k] ? ` · ${S.owners[k]}` : '';
+      opts += `<option value="${esc(k)}">${getFlag(n)} ${esc(n)}${o}</option>`;
+    }
+  });
+  sel.innerHTML = opts;
+  sel.value = cur;
+}
+
+function bindAwardEvents() {
+  const sel     = document.getElementById('award-team-select');
+  const preview = document.getElementById('award-owner-preview');
+
+  sel?.addEventListener('change', () => {
+    if (!preview || !sel.value) { if (preview) preview.innerHTML = ''; return; }
+    const k = sel.value, o = S.owners[k], n = teamName(k);
+    preview.innerHTML = o && o.trim()
+      ? `<span class="sw-preview-ok">Owner: <strong>${esc(o)}</strong></span>`
+      : `<span class="sw-warn">⚠ No owner assigned to ${esc(n)}</span>`;
+  });
+
+  document.getElementById('btn-add-award')?.addEventListener('click', () => {
+    const nameEl = document.getElementById('award-name-input');
+    const awardName = nameEl?.value.trim();
+    const teamKey   = sel?.value;
+    if (!awardName) { alert('Please enter an award name.'); return; }
+    if (!teamKey)   { alert('Please select a team.'); return; }
+    S.awards.push({ id: Date.now(), name: awardName, teamKey });
+    save();
+    const saved = nameEl?.value; // will clear below
+    renderAwards();
+    refreshLeaderboard();
+    if (nameEl) nameEl.value = '';
+  });
+
+  document.querySelectorAll('.btn-remove-award').forEach(btn => {
+    btn.addEventListener('click', () => {
+      S.awards = S.awards.filter(a => a.id !== parseInt(btn.dataset.id));
+      save();
+      renderAwards();
+      refreshLeaderboard();
+    });
+  });
+}
+
+function refreshLeaderboard() {
+  const sumEl = document.getElementById('sw-summary');
+  const tblEl = document.getElementById('sw-table');
+  if (!sumEl && !tblEl) return;
+  const rows = calcSweepstake();
+  if (sumEl) sumEl.innerHTML = buildSummaryHTML(rows);
+  if (tblEl) tblEl.innerHTML = buildTableHTML(rows);
+}
+
+function renderAwards() {
+  const el = document.getElementById('sw-awards');
+  if (!el) return;
+  // Save form state
+  const savedName = document.getElementById('award-name-input')?.value ?? '';
+  const savedTeam = document.getElementById('award-team-select')?.value ?? '';
+  el.innerHTML = buildAwardsHTML();
+  // Restore form state
+  const ni = document.getElementById('award-name-input');
+  const ts = document.getElementById('award-team-select');
+  if (ni) ni.value = savedName;
+  if (ts) ts.value = savedTeam;
+  bindAwardEvents();
+}
+
+function renderSweepstake() {
+  const pane = document.getElementById('tab-sweepstake');
+  if (!pane) return;
+  pane.innerHTML = `
+    <div id="sw-summary" class="sw-summary-bar"></div>
+    <div class="sw-body">
+      <div class="sw-table-section">
+        <div class="sw-section-head">🏆 Leaderboard</div>
+        <div id="sw-table"></div>
+      </div>
+      <div class="sw-awards-section">
+        <div id="sw-awards"></div>
+      </div>
+    </div>`;
+  refreshLeaderboard();
+  renderAwards();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -671,17 +963,16 @@ function initButtons() {
     const hadOwners = Object.values(S.owners).some(v => v && v.trim());
     S.scores = {};
     S.ko     = makeKO();
-    if (hadOwners && confirm('Also reset owner names?')) {
-      S.owners = {};
-    }
+    if (hadOwners && confirm('Also reset owner names?')) S.owners = {};
     save();
     renderGroups();
     renderKnockout();
+    renderSweepstake();
   });
 
   document.getElementById('btn-sample').addEventListener('click', () => {
     if (Object.keys(S.scores).length > 0) {
-      if (!confirm('Load sample data? Your current scores will be overwritten.')) return;
+      if (!confirm('Load sample data? Current scores will be overwritten.')) return;
     }
     S.teams  = { ...SAMPLE_TEAMS };
     S.scores = { ...SAMPLE_SCORES };
@@ -689,9 +980,8 @@ function initButtons() {
     save();
     renderGroups();
     renderKnockout();
-    if (confirm('Sample data loaded! Auto-fill Round of 32 from group results?')) {
-      populateR32();
-    }
+    renderSweepstake();
+    if (confirm('Sample data loaded! Auto-fill Round of 32 from group results?')) populateR32();
   });
 }
 
@@ -701,5 +991,6 @@ function initButtons() {
 
 renderGroups();
 renderKnockout();
+renderSweepstake();
 initTabs();
 initButtons();
