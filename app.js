@@ -3248,7 +3248,10 @@ function announceMatch(kind, a, b) {
   const winOwners = ownersOf(winKey), loseOwners = ownersOf(loseKey);
 
   const lines = [];
-  lines.push(unesc(u.headline));                                            // upset / leader / champion …
+  // Use the headline only when it's a winner/standings story (upset, champion,
+  // new leader…). If it's an elimination headline, drop it — the dedicated loser
+  // line below states the elimination, so we avoid saying it twice.
+  if (u.headline && !u.headline.startsWith('💔')) lines.push(unesc(u.headline));
   lines.push(`${u.t1.flag} ${u.t1.name} ${u.t1.score}–${u.t2.score} ${u.t2.name} ${u.t2.flag}`);
 
   // ── Winning owner benefit ──
