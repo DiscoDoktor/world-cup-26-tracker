@@ -1538,8 +1538,9 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
 .chat-msg-time { font-size: .64rem; color: var(--gray-400); }
 .chat-del {
   margin-left: auto; border: none; background: none; cursor: pointer;
-  color: var(--red); font-size: .8rem; line-height: 1; padding: 0 2px;
+  color: var(--gray-400); font-size: .8rem; line-height: 1; padding: 0 4px; flex-shrink: 0;
 }
+.chat-del:hover { color: var(--red); }
 .chat-msg-body {
   background: var(--white);
   border: 1px solid var(--gray-200);
@@ -1554,7 +1555,8 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
 
 /* System announcements */
 .chat-system { align-self: stretch; max-width: 100%; }
-.chat-sys-time { font-size: .64rem; font-weight: 700; color: var(--green-700); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 2px; }
+.chat-sys-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.chat-sys-time { font-size: .64rem; font-weight: 700; color: var(--green-700); text-transform: uppercase; letter-spacing: .4px; }
 .chat-sys-body {
   background: linear-gradient(135deg, rgba(245,197,24,.16), rgba(26,122,64,.10));
   border: 1px solid var(--gold);

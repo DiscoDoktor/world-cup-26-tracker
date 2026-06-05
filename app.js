@@ -2105,8 +2105,14 @@ function initButtons() {
     if (activeTab) document.getElementById(`tab-${activeTab}`).classList.add('active');
   });
 
-  document.getElementById('btn-reset')?.addEventListener('click', () => {
-    if (!confirm('Reset all scores and knockout bracket?\nThis cannot be undone.')) return;
+  document.getElementById('btn-reset')?.addEventListener('click', async () => {
+    if (!isAdmin) return;
+    if (!confirm('This will reset all tournament data and permanently clear the Dugout chat. Continue?')) return;
+    // Clear the Dugout first — if it fails, abort so we never leave old messages
+    // behind or falsely claim a full reset.
+    const cleared = await clearDugout();
+    if (!cleared) return;
+
     const hadOwners = Object.values(S.owners).some(v => v && v.trim()) ||
                       Object.values(S.owners2).some(v => v && v.trim());
     S.scores = {};
@@ -3021,26 +3027,33 @@ function bindChatEvents() {
 function autoGrow(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; }
 
 // ── Messages (rendered as safe text — never innerHTML for user content) ──
+// Subtle admin delete control (added to any message when signed in).
+function chatDeleteBtn(m) {
+  const del = document.createElement('button');
+  del.className = 'chat-del'; del.textContent = '✕';
+  const label = m.message_type === 'system' ? 'Delete Dugout update' : `Delete message from ${m.sender_name}`;
+  del.title = label; del.setAttribute('aria-label', label);
+  del.addEventListener('click', () => deleteChatMessage(m.id));
+  return del;
+}
 function messageEl(m) {
   const wrap = document.createElement('div');
   const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   if (m.message_type === 'system') {
     wrap.className = 'chat-msg chat-system';
-    const body = document.createElement('div'); body.className = 'chat-sys-body'; body.textContent = m.message;
+    const head = document.createElement('div'); head.className = 'chat-sys-head';
     const t = document.createElement('div'); t.className = 'chat-sys-time'; t.textContent = '⚽ Dugout update · ' + time;
-    wrap.appendChild(t); wrap.appendChild(body);
+    head.appendChild(t);
+    if (isAdmin) head.appendChild(chatDeleteBtn(m));
+    const body = document.createElement('div'); body.className = 'chat-sys-body'; body.textContent = m.message;
+    wrap.appendChild(head); wrap.appendChild(body);
   } else {
     wrap.className = 'chat-msg chat-user' + (m.sender_name === chatName ? ' chat-mine' : '');
     const head = document.createElement('div'); head.className = 'chat-msg-head';
     const nm = document.createElement('span'); nm.className = 'chat-msg-name'; nm.textContent = m.sender_name;
     const t = document.createElement('span'); t.className = 'chat-msg-time'; t.textContent = '· ' + time;
     head.appendChild(nm); head.appendChild(t);
-    if (isAdmin) {
-      const del = document.createElement('button');
-      del.className = 'chat-del'; del.textContent = '✕'; del.title = 'Delete message';
-      del.addEventListener('click', () => deleteChatMessage(m.id));
-      head.appendChild(del);
-    }
+    if (isAdmin) head.appendChild(chatDeleteBtn(m));
     const body = document.createElement('div'); body.className = 'chat-msg-body'; body.textContent = m.message;
     wrap.appendChild(head); wrap.appendChild(body);
   }
@@ -3162,6 +3175,29 @@ async function deleteChatMessage(id) {
           '\n\nIf this says "permission denied" or "row-level security", the chat\n' +
           'moderation policy needs the repair SQL.');
     console.warn('chat delete:', e);
+  }
+}
+
+// Permanently clear every Dugout message (admin Reset). Hard-deletes all rows
+// — including soft-deleted ones and their event_keys — via an admin-gated
+// SECURITY DEFINER function so old event keys can't block future announcements.
+// Returns true on success, false (with a visible error) on failure.
+async function clearDugout() {
+  if (!isAdmin || !sb) { alert('You must be signed in as an administrator to clear the Dugout.'); return false; }
+  try {
+    const { error } = await sb.rpc('clear_dugout_messages');
+    if (error) throw error;
+    chatMessages = [];
+    chatLastRead = '';
+    try { localStorage.removeItem('wc_chat_lastread'); } catch (e) {}
+    renderMessages();
+    updateUnreadBadge();
+    return true;
+  } catch (e) {
+    alert('The Dugout could NOT be cleared:\n' + (e.message || e) +
+          '\n\nNothing has been reset. Run the clear_dugout_messages() SQL in Supabase, then try Reset again.');
+    console.warn('clear dugout:', e);
+    return false;
   }
 }
 
