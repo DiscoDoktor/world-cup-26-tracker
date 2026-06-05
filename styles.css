@@ -830,8 +830,8 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .award-pts    { font-weight: 800; color: var(--green-500); flex-shrink: 0; }
 .btn-remove-award { flex-shrink: 0; }
 
-/* ─── Latest Updates (below the leaderboard) ─────────── */
-.sw-updates-section { margin-top: 20px; }
+/* ─── Latest Updates (above the leaderboard) ─────────── */
+.sw-updates-section { margin-bottom: 16px; }
 .upd-empty {
   background: var(--white);
   border: 1px dashed var(--gray-200);

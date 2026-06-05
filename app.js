@@ -1802,6 +1802,7 @@ function renderSweepstake() {
   if (!pane) return;
   const showBd = !!uiPrefs.breakdown;
   pane.innerHTML = `
+    <div id="sw-updates" class="sw-updates-section"></div>
     <div class="sw-body">
       <div class="sw-table-section${showBd ? ' show-breakdown' : ''}" id="sw-table-section">
         <div class="sw-section-head">
@@ -1815,8 +1816,7 @@ function renderSweepstake() {
       <div class="sw-awards-section">
         <div id="sw-awards"></div>
       </div>
-    </div>
-    <div id="sw-updates" class="sw-updates-section"></div>`;
+    </div>`;
   refreshLeaderboard();
   renderAwards();
   applyAccessMode();
