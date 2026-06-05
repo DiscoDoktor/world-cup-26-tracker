@@ -327,6 +327,8 @@ let S;
   try {
     const raw = localStorage.getItem('wc2026v2');
     S = raw ? JSON.parse(raw) : freshState();
+    if (!S.teams)   S.teams   = { ...REAL_TEAMS };
+    if (!S.scores)  S.scores  = {};
     if (!S.ko)      S.ko      = makeKO();
     if (!S.owners)  S.owners  = {};
     if (!S.owners2) S.owners2 = {};
@@ -385,6 +387,7 @@ function calcStandings(g) {
 // ═══════════════════════════════════════════════════════════════════
 
 function koWinner(m) {
+  if (!m.h || !m.a) return null;   // both teams must be present to have a winner
   if (m.pens === 'h') return m.h;
   if (m.pens === 'a') return m.a;
   if (m.hs === '' || m.as === '') return null;
@@ -402,6 +405,13 @@ function koLoser(m) {
 }
 
 function advanceAll() {
+  // Clear every slot that is fed from an earlier round first, so changing or
+  // undoing a result never leaves a stale team stranded further up the bracket.
+  // (Round of 32 is seeded by populateR32, so it is never cleared here.)
+  ['r16','qf','sf'].forEach(r => S.ko[r].forEach(m => { m.h = ''; m.a = ''; }));
+  S.ko.final[0].h = ''; S.ko.final[0].a = '';
+  S.ko.tp[0].h    = ''; S.ko.tp[0].a    = '';
+
   [['r32','r16'],['r16','qf'],['qf','sf']].forEach(([from, to]) => {
     S.ko[from].forEach((m, i) => {
       const w = koWinner(m);
@@ -725,9 +735,23 @@ function renderGroups() {
     for (let i = 0; i < 4; i++) {
       // Team name input
       document.getElementById(`ti-${g}-${i}`)?.addEventListener('input', e => {
+        const key = `${g}${i}`;
+        const oldName = teamName(key);     // before the change
         const val = e.target.value;
-        S.teams[`${g}${i}`] = val;
+        S.teams[key] = val;
+        const newName = teamName(key);     // val, or the default fallback
+
+        // The knockout bracket and draw picks store team *names*, so a rename
+        // must be propagated there or those teams would be orphaned.
+        if (oldName && newName && oldName !== newName) {
+          ROUND_ORDER.forEach(r => S.ko[r].forEach(m => {
+            if (m.h === oldName) m.h = newName;
+            if (m.a === oldName) m.a = newName;
+          }));
+          S.draw.picks.forEach(rp => rp.forEach(p => { if (p.team === oldName) p.team = newName; }));
+        }
         save();
+
         const sf = document.getElementById(`sf-${g}-${i}`);
         if (sf) sf.textContent = getFlag(val);
         FIXTURES[g].forEach((fx, fIdx) => {
@@ -745,6 +769,10 @@ function renderGroups() {
         const st = document.getElementById(`st-${g}`);
         if (st) st.innerHTML = standingsHTML(g);
         refreshLeaderboard();
+      });
+      // Re-render the bracket once editing settles (keeps it light per keystroke)
+      document.getElementById(`ti-${g}-${i}`)?.addEventListener('change', () => {
+        renderKnockout();
       });
 
       // Owner 1 input
@@ -1239,7 +1267,7 @@ function initTabs() {
 // ═══════════════════════════════════════════════════════════════════
 
 function initButtons() {
-  document.getElementById('btn-print').addEventListener('click', () => {
+  document.getElementById('btn-print')?.addEventListener('click', () => {
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.add('active'));
     window.print();
     const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
@@ -1247,7 +1275,7 @@ function initButtons() {
     if (activeTab) document.getElementById(`tab-${activeTab}`).classList.add('active');
   });
 
-  document.getElementById('btn-reset').addEventListener('click', () => {
+  document.getElementById('btn-reset')?.addEventListener('click', () => {
     if (!confirm('Reset all scores and knockout bracket?\nThis cannot be undone.')) return;
     const hadOwners = Object.values(S.owners).some(v => v && v.trim()) ||
                       Object.values(S.owners2).some(v => v && v.trim());
@@ -1267,7 +1295,7 @@ function initButtons() {
     renderAssignment();
   });
 
-  document.getElementById('btn-sample').addEventListener('click', () => {
+  document.getElementById('btn-sample')?.addEventListener('click', () => {
     if (Object.keys(S.scores).length > 0) {
       if (!confirm('Load sample data? Current scores will be overwritten.')) return;
     }

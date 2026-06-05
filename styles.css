@@ -319,13 +319,16 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   -webkit-overflow-scrolling: touch;
 }
 
-/* Green wall-chart panel */
+/* Green wall-chart panel.
+   margin-inline:auto centres it when it fits, but collapses to 0 when it is
+   wider than the scroll container so the left (Round of 32) edge is never
+   clipped and stays scrollable. */
 .bracket {
   display: flex;
   align-items: stretch;
-  justify-content: center;
   gap: var(--gut);
-  min-width: max-content;
+  width: max-content;
+  margin-inline: auto;
   padding: 26px 22px;
   border-radius: 14px;
   background:
@@ -393,15 +396,23 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   background: var(--line);
 }
 
-/* ── Centre column: final on top, third-place below ── */
+/* ── Centre column: final vertically centred, third-place pinned below ──
+   Both are absolutely placed so the Final stays aligned with the semi-final
+   connector lines and can never overlap the third-place card, even when the
+   champion banner appears. */
 .center-col {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   min-width: 230px;
 }
-.final-block { display: flex; flex-direction: column; align-items: stretch; }
+.final-block {
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
 .final-crown {
   text-align: center;
   font-size: .8rem;
@@ -878,7 +889,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   padding: 5px 8px;
   font-size: .8rem;
 }
-.pot-team.taken { background: var(--green-bg, rgba(45,168,88,.1)); border-color: var(--green-400); opacity: .75; }
+.pot-team.taken { background: rgba(45,168,88,.1); border-color: var(--green-400); opacity: .75; }
 .pot-flag { font-size: 1rem; flex-shrink: 0; }
 .pot-name { font-weight: 600; flex-shrink: 0; }
 .pot-owners {
