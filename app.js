@@ -2194,6 +2194,35 @@ function maybeOfferMigrationOnSignin() {
   if (stateIsBlank(S) && backup && !stateIsBlank(backup)) offerMigration(backup);
 }
 
+// ── "Add to Home Screen" hint (phones only, dismissible, remembered) ──
+function initA2HS() {
+  const bar = document.getElementById('a2hs');
+  if (!bar) return;
+
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                     window.navigator.standalone === true;          // already installed
+  const isPhone = (window.matchMedia && window.matchMedia('(max-width: 820px)').matches) &&
+                  (('ontouchstart' in window) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+  if (standalone || !isPhone || uiPrefs.a2hsDismissed) return;
+
+  const ua = navigator.userAgent || '';
+  const isIOS = /iphone|ipad|ipod/i.test(ua) ||
+                (/Macintosh/.test(ua) && 'ontouchstart' in window);  // iPadOS reports as Mac
+  const text = document.getElementById('a2hs-text');
+  if (text) {
+    text.textContent = isIOS
+      ? 'Install: tap Share, then “Add to Home Screen”.'
+      : 'Install: tap your browser menu ⋮, then “Add to Home Screen”.';
+  }
+  bar.style.display = 'flex';
+
+  document.getElementById('a2hs-close')?.addEventListener('click', () => {
+    bar.style.display = 'none';
+    uiPrefs.a2hsDismissed = true;
+    saveUiPrefs();
+  });
+}
+
 // ── Boot overlay ──
 function hideBootOverlay() { const o = document.getElementById('boot-overlay'); if (o) o.style.display = 'none'; }
 function bootError(msg, retry) {
@@ -2217,6 +2246,7 @@ async function boot() {
   initButtons();
   initAuthUI();
   applyAccessMode();
+  initA2HS();
 
   if (!window.supabase || !window.WC_CONFIG || !WC_CONFIG.SUPABASE_URL) {
     setSync('offline', 'Local only');
