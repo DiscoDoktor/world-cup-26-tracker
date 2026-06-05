@@ -374,32 +374,72 @@ function freshState() {
            draw: freshDraw() };
 }
 
-let S;
-(function initState() {
+// ── Local-only interface preferences (never shared) ──
+let uiPrefs = (function () {
+  try { return JSON.parse(localStorage.getItem('wc_ui') || '{}'); }
+  catch (e) { return {}; }
+})();
+function saveUiPrefs() {
+  try { localStorage.setItem('wc_ui', JSON.stringify(uiPrefs)); } catch (e) {}
+}
+
+// Fill any missing keys and migrate an incoming state object.
+function normalizeState(s) {
+  if (!s || typeof s !== 'object') s = freshState();
+  if (!s.teams)   s.teams   = { ...REAL_TEAMS };
+  if (!s.scores)  s.scores  = {};
+  if (!s.ko)      s.ko      = makeKO();
+  if (!s.owners)  s.owners  = {};
+  if (!s.owners2) s.owners2 = {};
+  if (!s.awards)  s.awards  = [];
+  if (!s.draw)    s.draw    = freshDraw();
+  // Rebuild the knockout bracket if seeded by an older version.
+  if (s.koVersion !== KO_VERSION) { s.ko = makeKO(); s.koVersion = KO_VERSION; }
+  return s;
+}
+
+// Cached copy (offline fallback only — NOT the shared source of truth).
+function loadLocalState() {
   try {
     const raw = localStorage.getItem('wc2026v2');
-    S = raw ? JSON.parse(raw) : freshState();
-    if (!S.teams)   S.teams   = { ...REAL_TEAMS };
-    if (!S.scores)  S.scores  = {};
-    if (!S.ko)      S.ko      = makeKO();
-    if (!S.owners)  S.owners  = {};
-    if (!S.owners2) S.owners2 = {};
-    if (!S.awards)  S.awards  = [];
-    if (!S.draw)    S.draw    = freshDraw();
-    // Rebuild the knockout bracket if it was seeded by an older version
-    // (old saves used "3rd-N" placeholders that paired thirds against each
-    // other). Group scores, owners and awards are preserved.
-    if (S.koVersion !== KO_VERSION) {
-      S.ko = makeKO();
-      S.koVersion = KO_VERSION;
-    }
-  } catch(e) {
-    S = freshState();
-  }
-})();
+    return raw ? normalizeState(JSON.parse(raw)) : null;
+  } catch (e) { return null; }
+}
 
+// One-time snapshot of any pre-existing (pre-Supabase) local data, kept in a
+// separate key so it survives the live cache being overwritten by cloud state.
+// This is what the admin imports during the one-time migration.
+(function backupLegacyLocal() {
+  try {
+    if (localStorage.getItem('wc2026v2') && !localStorage.getItem('wc2026v2_backup')) {
+      localStorage.setItem('wc2026v2_backup', localStorage.getItem('wc2026v2'));
+    }
+  } catch (e) {}
+})();
+function loadBackupState() {
+  try {
+    const raw = localStorage.getItem('wc2026v2_backup');
+    return raw ? normalizeState(JSON.parse(raw)) : null;
+  } catch (e) { return null; }
+}
+
+// Start from the local cache so the first paint isn't blank; the shared
+// database state overrides this once it loads.
+let S = loadLocalState() || freshState();
+
+// True when the state is empty defaults (nothing entered yet).
+function stateIsBlank(s) {
+  return Object.keys(s.scores || {}).length === 0 &&
+         Object.values(s.owners  || {}).every(v => !v) &&
+         Object.values(s.owners2 || {}).every(v => !v) &&
+         (s.awards || []).length === 0 &&
+         (s.draw ? s.draw.picks.every(r => r.length === 0) : true);
+}
+
+// save() = always cache locally; push to the shared DB (admins only, debounced)
 function save() {
-  try { localStorage.setItem('wc2026v2', JSON.stringify(S)); } catch(e) {}
+  try { localStorage.setItem('wc2026v2', JSON.stringify(S)); } catch (e) {}
+  scheduleCloudPush();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -871,6 +911,7 @@ function renderGroups() {
       bindScore('a');
     });
   });
+  applyAccessMode();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -924,9 +965,9 @@ function koCardHTML(round, idx, side) {
   const pensHTML = isLevel ? `
     <div class="pens-strip">
       <span>${m.pens ? 'Pens:' : '⚠ Level — pick winner:'}</span>
-      <button class="pens-pick${m.pens==='h'?' chosen':''}"
+      <button class="pens-pick admin-disable${m.pens==='h'?' chosen':''}"
               data-r="${round}" data-i="${idx}" data-p="h">${esc(m.h||'—')}</button>
-      <button class="pens-pick${m.pens==='a'?' chosen':''}"
+      <button class="pens-pick admin-disable${m.pens==='a'?' chosen':''}"
               data-r="${round}" data-i="${idx}" data-p="a">${esc(m.a||'—')}</button>
     </div>` : '';
 
@@ -1022,7 +1063,7 @@ function renderKnockout() {
 
   pane.innerHTML = `
     <div class="top-bar">
-      <button class="btn btn-green btn-sm" id="btn-populate">
+      <button class="btn btn-green btn-sm admin-only" id="btn-populate">
         ⚡ Auto-fill R32 from Group Results
       </button>
     </div>
@@ -1071,6 +1112,7 @@ function renderKnockout() {
   });
 
   document.getElementById('btn-populate')?.addEventListener('click', populateR32);
+  applyAccessMode();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1245,19 +1287,19 @@ function buildAwardsHTML() {
             <span class="award-badge">${esc(a.name)}</span>
             <span class="award-team">${getFlag(n)} ${esc(n)}${o}</span>
             <span class="award-pts">+3</span>
-            <button class="btn btn-danger btn-sm btn-remove-award" data-id="${a.id}">✕</button>
+            <button class="btn btn-danger btn-sm btn-remove-award admin-only" data-id="${a.id}">✕</button>
           </div>`;
       }).join('');
 
   return `
     <div class="sw-section-head">🏅 Player Awards <span class="sw-section-sub">(+3 pts each)</span></div>
-    <div class="sw-add-form">
+    <div class="sw-add-form admin-only">
       <input id="award-name-input" class="award-text-input" type="text"
              placeholder='Award name, e.g. "Golden Boot"' maxlength="50">
       <select id="award-team-select" class="award-team-select">${opts}</select>
       <button id="btn-add-award" class="btn btn-green btn-sm">+ Add</button>
     </div>
-    <div id="award-owner-preview" class="award-owner-preview"></div>
+    <div id="award-owner-preview" class="award-owner-preview admin-only"></div>
     <div class="sw-awards-list">${awardList}</div>`;
 }
 
@@ -1337,12 +1379,13 @@ function renderAwards() {
   if (ni) ni.value = savedName;
   if (ts) ts.value = savedTeam;
   bindAwardEvents();
+  applyAccessMode();
 }
 
 function renderSweepstake() {
   const pane = document.getElementById('tab-sweepstake');
   if (!pane) return;
-  const showBd = !!S.swBreakdown;
+  const showBd = !!uiPrefs.breakdown;
   pane.innerHTML = `
     <div id="sw-summary" class="sw-summary-bar"></div>
     <div class="sw-body">
@@ -1361,14 +1404,16 @@ function renderSweepstake() {
     </div>`;
   refreshLeaderboard();
   renderAwards();
+  applyAccessMode();
 
+  // Breakdown is a local-only view preference (anyone can toggle it).
   document.getElementById('btn-breakdown')?.addEventListener('click', () => {
-    S.swBreakdown = !S.swBreakdown;
-    save();
+    uiPrefs.breakdown = !uiPrefs.breakdown;
+    saveUiPrefs();
     const sec = document.getElementById('sw-table-section');
     const btn = document.getElementById('btn-breakdown');
-    if (sec) sec.classList.toggle('show-breakdown', S.swBreakdown);
-    if (btn) btn.textContent = S.swBreakdown ? 'Hide points breakdown' : 'Show points breakdown';
+    if (sec) sec.classList.toggle('show-breakdown', uiPrefs.breakdown);
+    if (btn) btn.textContent = uiPrefs.breakdown ? 'Hide points breakdown' : 'Show points breakdown';
   });
 }
 
@@ -1519,7 +1564,7 @@ function ensureAudio() {
   return audioCtx;
 }
 function beep(freq, dur, type, vol) {
-  if (!S.draw.sound) return;
+  if (!uiPrefs.sound) return;
   const ctx = ensureAudio();
   if (!ctx) return;
   try {
@@ -1704,15 +1749,15 @@ function skipDraw() {
   drawSkipAll = true;
 }
 
-// Toggle draw sound effects (muted by default; persisted)
+// Toggle draw sound effects (muted by default; local-only preference)
 function toggleDrawSound() {
-  S.draw.sound = !S.draw.sound;
-  save();
-  if (S.draw.sound) ensureAudio(); // create context inside the click gesture
+  uiPrefs.sound = !uiPrefs.sound;
+  saveUiPrefs();
+  if (uiPrefs.sound) ensureAudio(); // create context inside the click gesture
   const b = document.getElementById('btn-sound');
   if (b) {
-    b.textContent = S.draw.sound ? '🔊 Sound on' : '🔇 Sound off';
-    b.classList.toggle('sound-on', S.draw.sound);
+    b.textContent = uiPrefs.sound ? '🔊 Sound on' : '🔇 Sound off';
+    b.classList.toggle('sound-on', uiPrefs.sound);
   }
 }
 
@@ -1853,8 +1898,8 @@ function renderAssignment() {
         <div class="assign-head">1 · Owners</div>
         <div class="owner-fields">${buildOwnerInputsHTML()}</div>
         <div class="assign-btn-row">
-          <button id="btn-save-owners" class="btn btn-green btn-sm">💾 Save owners</button>
-          <button id="btn-clear-assign" class="btn btn-danger btn-sm">🗑 Clear assignment</button>
+          <button id="btn-save-owners" class="btn btn-green btn-sm admin-only">💾 Save owners</button>
+          <button id="btn-clear-assign" class="btn btn-danger btn-sm admin-only">🗑 Clear assignment</button>
         </div>
         <div id="owner-status" class="owner-status"></div>
       </div>
@@ -1865,10 +1910,10 @@ function renderAssignment() {
         <div id="draw-reel" class="draw-reel"><span class="reel-name">Ready…</span></div>
         <div id="draw-reveal" class="draw-reveal"></div>
         <div class="assign-btn-row">
-          <button id="btn-draw-next"  class="btn btn-gold btn-sm">🎯 Draw next owner</button>
-          <button id="btn-draw-round" class="btn btn-green btn-sm">⚡ Draw full round</button>
-          <button id="btn-skip-draw"  class="btn btn-outline btn-sm draw-skip">⏭ Skip</button>
-          <button id="btn-reset-draw" class="btn btn-danger btn-sm">↺ Reset draw</button>
+          <button id="btn-draw-next"  class="btn btn-gold btn-sm admin-only">🎯 Draw next owner</button>
+          <button id="btn-draw-round" class="btn btn-green btn-sm admin-only">⚡ Draw full round</button>
+          <button id="btn-skip-draw"  class="btn btn-outline btn-sm draw-skip admin-only">⏭ Skip</button>
+          <button id="btn-reset-draw" class="btn btn-danger btn-sm admin-only">↺ Reset draw</button>
           <button id="btn-sound" class="btn btn-outline btn-sm">🔇 Sound off</button>
         </div>
         <div class="draw-teamlist-wrap">
@@ -1918,20 +1963,314 @@ function renderAssignment() {
   // Reflect saved sound preference on the toggle
   const sb = document.getElementById('btn-sound');
   if (sb) {
-    sb.textContent = S.draw.sound ? '🔊 Sound on' : '🔇 Sound off';
-    sb.classList.toggle('sound-on', !!S.draw.sound);
+    sb.textContent = uiPrefs.sound ? '🔊 Sound on' : '🔇 Sound off';
+    sb.classList.toggle('sound-on', !!uiPrefs.sound);
   }
 
   updateDrawStatus();
+  applyAccessMode();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CLOUD SYNC + AUTH (Supabase)
+// ═══════════════════════════════════════════════════════════════════
+
+let sb = null;                 // Supabase client
+let isAdmin = false;
+let currentUser = null;
+let pushTimer = null;
+let lastAppliedTs = null;      // newest updated_at we have applied
+let realtimeChannel = null;
+let savedRevertTimer = null;
+
+// ── Small UI helpers ──
+function setSync(cls, text) {
+  const pill = document.getElementById('sync-pill');
+  if (!pill) return;
+  pill.className = 'sync-pill sync-' + cls;
+  pill.textContent = text;
+}
+function setUpdatedLabel(ts) {
+  const el = document.getElementById('updated-label');
+  if (!el || !ts) return;
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const today = new Date().toDateString() === d.toDateString();
+  el.textContent = 'Updated ' + (today ? time : d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' ' + time);
+}
+function idleSync() {
+  if (!sb) { setSync('offline', 'Local only'); return; }
+  if (!navigator.onLine) { setSync('offline', '⚠ Offline'); return; }
+  setSync(isAdmin ? 'admin' : 'online', isAdmin ? '● Admin · live' : '● Live');
+}
+
+function renderAll() {
+  renderGroups();
+  renderKnockout();
+  renderSweepstake();
+  renderAssignment();
+}
+
+// ── View-only vs admin mode (UI only; real security is RLS) ──
+function applyAccessMode() {
+  const ro = !isAdmin;
+  document.body.classList.toggle('view-only', ro);
+  document.body.classList.toggle('admin-mode', isAdmin);
+  // Editing inputs/selects inside the tabs are disabled for viewers
+  document.querySelectorAll('main input, main select').forEach(el => { el.disabled = ro; });
+  // Admin-only controls are hidden for viewers
+  document.querySelectorAll('.admin-only').forEach(el => { el.hidden = ro; });
+  // Admin-disable controls stay visible but inert for viewers
+  document.querySelectorAll('.admin-disable').forEach(el => { el.disabled = ro; });
+}
+
+// ── Writing to the shared DB (admins only, debounced) ──
+function scheduleCloudPush() {
+  if (!sb || !isAdmin) return;     // viewers never write (also enforced by RLS)
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushCloud, 500);
+}
+async function pushCloud() {
+  if (!sb || !isAdmin) return;
+  if (!navigator.onLine) { setSync('offline', '⚠ Offline — not shared'); return; }
+  setSync('saving', 'Saving…');
+  const ts = new Date().toISOString();
+  try {
+    const { data, error } = await sb.from('tournament_state')
+      .update({ state: S, updated_at: ts, updated_by: currentUser ? currentUser.id : null })
+      .eq('id', 1).select().single();
+    if (error) throw error;
+    lastAppliedTs = data.updated_at;
+    setUpdatedLabel(data.updated_at);
+    setSync('saved', '✓ Saved');
+    clearTimeout(savedRevertTimer);
+    savedRevertTimer = setTimeout(idleSync, 1500);
+  } catch (e) {
+    setSync('error', '⚠ Save failed');
+    console.warn('Cloud save failed:', e.message || e);
+  }
+}
+
+// ── Applying a remote change ──
+function applyRemoteState(row) {
+  if (!row) return;
+  const ts = row.updated_at;
+  // Ignore our own write echo (JSONB reorders keys, so compare by author)
+  if (isAdmin && currentUser && row.updated_by === currentUser.id) {
+    lastAppliedTs = ts; setUpdatedLabel(ts); idleSync(); return;
+  }
+  if (lastAppliedTs && ts && ts <= lastAppliedTs) return; // stale
+  lastAppliedTs = ts;
+  S = normalizeState(row.state || {});
+  try { localStorage.setItem('wc2026v2', JSON.stringify(S)); } catch (e) {}
+  renderAll();
+  setUpdatedLabel(ts);
+  idleSync();
+}
+
+function subscribeRealtime() {
+  if (!sb) return;
+  if (realtimeChannel) sb.removeChannel(realtimeChannel);
+  realtimeChannel = sb.channel('tournament_state_changes')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'tournament_state', filter: 'id=eq.1' },
+      payload => applyRemoteState(payload.new))
+    .subscribe();
+}
+
+// ── Auth ──
+async function refreshAdminStatus() {
+  isAdmin = false; currentUser = null;
+  if (!sb) { updateAdminUI(); return; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session && session.user) {
+      currentUser = session.user;
+      const { data, error } = await sb.from('app_admins')
+        .select('user_id').eq('user_id', session.user.id).maybeSingle();
+      isAdmin = !!data && !error;
+    }
+  } catch (e) { /* stay viewer */ }
+  updateAdminUI();
+}
+function updateAdminUI() {
+  const btn = document.getElementById('btn-admin');
+  if (btn) btn.textContent = isAdmin ? '🔓 Sign out' : '🔑 Admin';
+  const mb = document.getElementById('mode-badge');
+  if (mb) {
+    mb.textContent = isAdmin ? 'ADMIN' : 'VIEW ONLY';
+    mb.className = 'mode-badge ' + (isAdmin ? 'mode-admin' : 'mode-view');
+  }
+  applyAccessMode();
+  idleSync();
+}
+async function doSignIn(email, pass) {
+  if (!sb) return { error: 'Not connected.' };
+  const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) return { error: error.message };
+  await refreshAdminStatus();
+  if (!isAdmin) {
+    await sb.auth.signOut();
+    isAdmin = false; currentUser = null; updateAdminUI();
+    return { error: 'Signed in, but this account is not an administrator.' };
+  }
+  return { ok: true };
+}
+async function doSignOut() {
+  if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+  isAdmin = false; currentUser = null;
+  updateAdminUI();
+  renderAll();             // refresh so any admin-only inputs reset cleanly
+}
+
+function initAuthUI() {
+  const modal = document.getElementById('admin-modal');
+  const open  = () => { if (modal) { modal.style.display = 'flex'; document.getElementById('admin-error').textContent = ''; document.getElementById('admin-email')?.focus(); } };
+  const close = () => { if (modal) modal.style.display = 'none'; };
+
+  document.getElementById('btn-admin')?.addEventListener('click', () => {
+    if (isAdmin) doSignOut(); else open();
+  });
+  document.getElementById('admin-cancel')?.addEventListener('click', close);
+  document.getElementById('admin-signin')?.addEventListener('click', async () => {
+    const email = document.getElementById('admin-email').value.trim();
+    const pass  = document.getElementById('admin-pass').value;
+    const errEl = document.getElementById('admin-error');
+    errEl.textContent = 'Signing in…';
+    const res = await doSignIn(email, pass);
+    if (res.error) { errEl.textContent = res.error; return; }
+    errEl.textContent = '';
+    document.getElementById('admin-pass').value = '';
+    close();
+    maybeOfferMigrationOnSignin();
+  });
+  document.getElementById('admin-pass')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('admin-signin').click();
+  });
+}
+
+// ── One-time migration of this device's saved data into the shared DB ──
+function migrationSummary(s) {
+  const owners = new Set();
+  Object.values(s.owners || {}).forEach(v => v && v.trim() && owners.add(v.trim()));
+  Object.values(s.owners2 || {}).forEach(v => v && v.trim() && owners.add(v.trim()));
+  const scores = Object.keys(s.scores || {}).filter(k => {
+    const sc = s.scores[k]; return sc && sc.h !== '' && sc.a !== '';
+  }).length;
+  const drawDone = s.draw ? s.draw.picks.reduce((n, r) => n + r.length, 0) : 0;
+  return `
+    <ul class="migrate-list">
+      <li><strong>${owners.size}</strong> owner name(s)</li>
+      <li><strong>${scores}</strong> group match score(s)</li>
+      <li><strong>${(s.awards || []).length}</strong> player award(s)</li>
+      <li><strong>${drawDone}</strong> draw pick(s) completed</li>
+    </ul>`;
+}
+function offerMigration(localCopy) {
+  const modal = document.getElementById('migrate-modal');
+  if (!modal) return;
+  document.getElementById('migrate-preview').innerHTML = migrationSummary(localCopy);
+  modal.style.display = 'flex';
+  document.getElementById('migrate-import').onclick = async () => {
+    modal.style.display = 'none';
+    S = localCopy;
+    renderAll(); applyAccessMode();
+    await pushCloud();
+    try { localStorage.removeItem('wc2026v2_backup'); } catch (e) {}
+  };
+  document.getElementById('migrate-skip').onclick = () => {
+    modal.style.display = 'none';
+    S = normalizeState({});
+    renderAll(); applyAccessMode();
+    idleSync();
+    try { localStorage.removeItem('wc2026v2_backup'); } catch (e) {} // don't re-prompt
+  };
+}
+
+// Offer migration when the admin signs in after the (blank) cloud already loaded
+function maybeOfferMigrationOnSignin() {
+  if (!isAdmin) return;
+  const backup = loadBackupState();
+  if (stateIsBlank(S) && backup && !stateIsBlank(backup)) offerMigration(backup);
+}
+
+// ── Boot overlay ──
+function hideBootOverlay() { const o = document.getElementById('boot-overlay'); if (o) o.style.display = 'none'; }
+function bootError(msg, retry) {
+  const o = document.getElementById('boot-overlay');
+  if (!o) return;
+  o.style.display = 'flex';
+  o.querySelector('.boot-spinner').style.display = 'none';
+  document.getElementById('boot-msg').textContent = msg;
+  const r = document.getElementById('boot-retry');
+  if (r) { r.style.display = retry ? '' : 'none'; r.onclick = retry || null; }
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════════════════
 
-renderGroups();
-renderKnockout();
-renderSweepstake();
-renderAssignment();
-initTabs();
-initButtons();
+async function boot() {
+  // First paint from the local cache so nothing is blank
+  renderAll();
+  initTabs();
+  initButtons();
+  initAuthUI();
+  applyAccessMode();
+
+  if (!window.supabase || !window.WC_CONFIG || !WC_CONFIG.SUPABASE_URL) {
+    setSync('offline', 'Local only');
+    bootError('No shared-database connection configured. This device will work on its own.', null);
+    setTimeout(hideBootOverlay, 1500);
+    return;
+  }
+
+  try {
+    sb = window.supabase.createClient(WC_CONFIG.SUPABASE_URL, WC_CONFIG.SUPABASE_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+  } catch (e) {
+    setSync('error', '⚠ Error');
+    bootError('Could not start the database client. Showing this device’s copy.', null);
+    setTimeout(hideBootOverlay, 1500);
+    return;
+  }
+
+  setSync('loading', 'Loading…');
+  await refreshAdminStatus();
+
+  try {
+    const { data, error } = await sb.from('tournament_state').select('*').eq('id', 1).single();
+    if (error) throw error;
+    const cloud = normalizeState(data.state || {});
+    lastAppliedTs = data.updated_at;
+    setUpdatedLabel(data.updated_at);
+
+    const backup = loadBackupState();
+    if (stateIsBlank(cloud) && backup && !stateIsBlank(backup) && isAdmin) {
+      // Shared DB is empty but this device has real data — let the admin import it
+      hideBootOverlay();
+      idleSync();
+      offerMigration(backup);
+    } else {
+      S = cloud;
+      try { localStorage.setItem('wc2026v2', JSON.stringify(S)); } catch (e) {}
+      renderAll();
+      applyAccessMode();
+      hideBootOverlay();
+      idleSync();
+    }
+  } catch (e) {
+    console.warn('Load failed:', e.message || e);
+    bootError('Could not load the shared data. Check your connection.', () => { location.reload(); });
+    setSync('error', '⚠ Offline');
+    return;
+  }
+
+  subscribeRealtime();
+  if (sb) sb.auth.onAuthStateChange(() => refreshAdminStatus());
+  window.addEventListener('online',  idleSync);
+  window.addEventListener('offline', () => setSync('offline', '⚠ Offline'));
+}
+
+boot();

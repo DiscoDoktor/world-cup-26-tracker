@@ -1093,6 +1093,149 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   .ko-score { width: 40px; font-size: .9rem; }
 }
 
+/* ─── Shared-app: header status, modes, modals, mobile ─────────────── */
+[hidden] { display: none !important; }
+
+/* Header status cluster */
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mode-badge {
+  font-size: .62rem;
+  font-weight: 800;
+  letter-spacing: .6px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.mode-view  { background: rgba(255,255,255,.16); color: #fff; }
+.mode-admin { background: var(--gold); color: var(--green-900); }
+.sync-pill {
+  font-size: .68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  background: rgba(255,255,255,.16);
+  color: #fff;
+}
+.sync-online  { background: rgba(45,168,88,.95); color: #fff; }
+.sync-admin   { background: var(--gold); color: var(--green-900); }
+.sync-saving  { background: #e8a13a; color: #2a1c00; }
+.sync-saved   { background: rgba(45,168,88,.95); color: #fff; }
+.sync-offline { background: #b3402f; color: #fff; }
+.sync-error   { background: var(--red); color: #fff; }
+.sync-loading { background: rgba(255,255,255,.2); color: #fff; }
+.updated-label { font-size: .66rem; color: rgba(255,255,255,.7); white-space: nowrap; }
+
+/* View-only: make disabled inputs read as plain text, not greyed boxes */
+body.view-only .score-input,
+body.view-only .ko-score {
+  -webkit-appearance: none; appearance: none;
+  background: transparent; border-color: transparent; color: var(--text);
+  opacity: 1; cursor: default;
+}
+body.view-only .team-name-input,
+body.view-only .owner-input,
+body.view-only .own-input,
+body.view-only .award-text-input,
+body.view-only .award-team-select { opacity: 1; cursor: default; background: transparent; }
+body.view-only input:disabled,
+body.view-only select:disabled { color: var(--text); }
+
+/* Boot overlay */
+.boot-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--green-900), var(--green-700));
+  padding: 24px;
+}
+.boot-box { text-align: center; color: #fff; max-width: 340px; }
+.boot-spinner {
+  width: 42px; height: 42px; margin: 0 auto 16px;
+  border: 4px solid rgba(255,255,255,.25);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.boot-msg { font-size: .95rem; font-weight: 600; margin-bottom: 14px; }
+
+/* Modals (admin sign-in + migration) */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 1001;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.55); padding: 18px;
+}
+.modal {
+  background: var(--white);
+  border-radius: 14px;
+  padding: 20px 20px 18px;
+  width: 100%; max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+.modal-head { font-size: 1.1rem; font-weight: 800; color: var(--green-700); margin-bottom: 6px; }
+.modal-sub { font-size: .82rem; color: var(--gray-600); margin-bottom: 14px; line-height: 1.45; }
+.modal-label { display: block; font-size: .76rem; font-weight: 700; color: var(--gray-600); margin-bottom: 10px; }
+.modal-label input {
+  display: block; width: 100%; margin-top: 4px;
+  padding: 10px 12px; font-size: .95rem;
+  border: 1px solid var(--gray-200); border-radius: 8px;
+  font-family: inherit; outline: none;
+}
+.modal-label input:focus { border-color: var(--green-500); box-shadow: 0 0 0 2px rgba(26,122,64,.15); }
+.modal-error { font-size: .8rem; color: var(--red); min-height: 18px; margin-bottom: 8px; font-weight: 600; }
+.modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.migrate-preview { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; }
+.migrate-list { list-style: none; font-size: .86rem; line-height: 1.7; }
+.migrate-list strong { color: var(--green-700); }
+
+/* ── Mobile / phone improvements ── */
+html, body { overflow-x: hidden; }            /* guard against page-wide overflow */
+header { padding-top: max(14px, env(safe-area-inset-top)); }
+
+/* Sticky, swipeable tab bar with comfortable touch targets */
+.tab-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+}
+
+@media (max-width: 640px) {
+  .header-inner { gap: 8px; }
+  h1 { font-size: 1.15rem; }
+  .subtitle { display: none; }
+  .ball { font-size: 1.7rem; }
+  .header-btns { gap: 6px; }
+  .btn { padding: 7px 11px; font-size: .78rem; }
+  .updated-label { width: 100%; }
+  main { padding: 12px max(12px, env(safe-area-inset-left)); }
+
+  /* Groups stack to a single column */
+  #tab-groups { grid-template-columns: 1fr; gap: 12px; }
+
+  /* Sweepstake: table and awards stack; chips wrap; comfortable rows */
+  .sw-summary-bar { gap: 8px; }
+  .sw-stat { min-width: 46%; }
+  .sw-table td, .sw-table th { padding: 4px 5px; }
+  .sw-owner-cell { font-size: .82rem; }
+  .sw-chip { font-size: .72rem; }
+
+  /* Assignment: full-width touch targets */
+  .assign-grid { grid-template-columns: 1fr; }
+  .owner-fields { grid-template-columns: 1fr 1fr; }
+  .assign-btn-row .btn { flex: 1 1 auto; min-height: 40px; }
+  .draw-reel { height: 96px; }
+
+  /* Bigger tap targets for score boxes when signed in */
+  .score-input { min-height: 30px; }
+}
+
 /* ─── Print styles ──────────────────────────────────── */
 @media print {
   @page { size: A3 landscape; margin: 8mm; }
@@ -1108,7 +1251,8 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   .ball { font-size: 1.4rem; }
   h1 { font-size: 1.1rem; }
   .subtitle { font-size: .7rem; }
-  .header-btns, .tab-nav { display: none !important; }
+  .header-btns, .tab-nav, .header-status,
+  .boot-overlay, .modal-backdrop { display: none !important; }
 
   main { padding: 8px; max-width: 100%; }
 

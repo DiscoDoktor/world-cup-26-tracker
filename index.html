@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>World Cup 2026 Wall Chart &amp; Results Tracker</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -17,10 +17,18 @@
           <p class="subtitle">Wall Chart &amp; Results Tracker</p>
         </div>
       </div>
+
+      <div class="header-status">
+        <span id="mode-badge" class="mode-badge mode-view">VIEW ONLY</span>
+        <span id="sync-pill" class="sync-pill" title="Connection status">…</span>
+        <span id="updated-label" class="updated-label"></span>
+      </div>
+
       <div class="header-btns">
-        <button id="btn-sample"  class="btn btn-outline">📋 Sample Data</button>
-        <button id="btn-reset"   class="btn btn-danger">↺ Reset</button>
+        <button id="btn-sample"  class="btn btn-outline admin-only">📋 Sample Data</button>
+        <button id="btn-reset"   class="btn btn-danger admin-only">↺ Reset</button>
         <button id="btn-print"   class="btn btn-gold">🖨 Print</button>
+        <button id="btn-admin"   class="btn btn-outline">🔑 Admin</button>
       </div>
     </div>
   </header>
@@ -39,6 +47,49 @@
     <div id="tab-assignment" class="tab-pane"></div>
   </main>
 
+  <!-- Loading / error overlay -->
+  <div id="boot-overlay" class="boot-overlay">
+    <div class="boot-box">
+      <div class="boot-spinner"></div>
+      <div id="boot-msg" class="boot-msg">Loading shared tournament…</div>
+      <button id="boot-retry" class="btn btn-green" style="display:none">Retry</button>
+    </div>
+  </div>
+
+  <!-- Admin sign-in modal -->
+  <div id="admin-modal" class="modal-backdrop" style="display:none">
+    <div class="modal">
+      <div class="modal-head">🔑 Administrator sign in</div>
+      <p class="modal-sub">Only the tournament administrator needs to sign in. Everyone else can view without an account.</p>
+      <label class="modal-label">Email
+        <input id="admin-email" type="email" autocomplete="username" placeholder="you@example.com">
+      </label>
+      <label class="modal-label">Password
+        <input id="admin-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+      </label>
+      <div id="admin-error" class="modal-error"></div>
+      <div class="modal-btns">
+        <button id="admin-cancel" class="btn btn-outline">Cancel</button>
+        <button id="admin-signin" class="btn btn-green">Sign in</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Migration prompt -->
+  <div id="migrate-modal" class="modal-backdrop" style="display:none">
+    <div class="modal">
+      <div class="modal-head">📤 Import your saved data?</div>
+      <p class="modal-sub">The shared database is empty, but this device has a saved tournament. Review it below and import it to make it the shared copy. (You can skip and start fresh.)</p>
+      <div id="migrate-preview" class="migrate-preview"></div>
+      <div class="modal-btns">
+        <button id="migrate-skip"   class="btn btn-outline">Skip</button>
+        <button id="migrate-import" class="btn btn-green">Import &amp; share</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
