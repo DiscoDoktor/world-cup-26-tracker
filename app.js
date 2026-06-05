@@ -247,6 +247,14 @@ DRAW_ROUNDS.forEach(r => r.teams.forEach(t => { TIER_OF[t] = r.key; }));
 
 function tierKey(name) { return TIER_OF[name] || null; }
 
+// Explicit pot-strength sort value: Top=0, Pot 1=1, Pot 2=2, Pot 3=3, Bottom=4.
+// Works regardless of how the pot labels are worded.
+const TIER_RANK = { top: 0, pot1: 1, pot2: 2, pot3: 3, bottom: 4 };
+function tierRank(name) {
+  const k = tierKey(name);
+  return (k && TIER_RANK[k] !== undefined) ? TIER_RANK[k] : 99;
+}
+
 // Compact, accessible pot badge (colour + text). `short` uses TOP/P1/P2/P3/BTM.
 function potBadge(name, short) {
   const k = tierKey(name);
@@ -1164,13 +1172,15 @@ function buildTableHTML(rows) {
   const body = rows.map((r, idx) => {
     // Status is still computed internally (it controls greying) but no longer
     // shown as text beside each team.
-    const teams = r.keys.map(k => {
+    // Always display teams in pot-strength order: Top → Pot 1 → 2 → 3 → Bottom.
+    const orderedKeys = r.keys.slice().sort((a, b) => tierRank(teamName(a)) - tierRank(teamName(b)));
+    const teams = orderedKeys.map(k => {
       const n = teamName(k);
       const out = teamStatus(k).elim;
       return `<span class="sw-chip${out ? ' sw-out' : ''}">` +
         `<span class="sw-cflag">${getFlag(n)}</span>` +
         `<span class="sw-cname">${esc(shortName(n))}</span>` +
-        `${potBadge(n, true)}</span>`;
+        `${potBadgeMini(n)}</span>`;
     }).join('');
     return `
       <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
