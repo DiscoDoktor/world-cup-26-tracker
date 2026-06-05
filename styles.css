@@ -100,7 +100,16 @@ h1 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.4px; line-height: 1
 .tier-p3  { background: var(--tier-p3); }
 .tier-bot { background: var(--tier-bot); }
 /* Knockout badges sit tight beside the (already small) team name */
-.ko-name .tier-badge { font-size: .5rem; padding: 0 3px; letter-spacing: .2px; }
+/* Single-character knockout pot badge (T/1/2/3/B) — compact centred square */
+.tier-mini { letter-spacing: 0; }
+.ko-name .tier-badge.tier-mini {
+  font-size: .56rem;
+  padding: 0;
+  width: 13px;
+  min-width: 13px;
+  text-align: center;
+  border-radius: 3px;
+}
 
 /* ─── Tabs ──────────────────────────────────────────── */
 .tab-nav {

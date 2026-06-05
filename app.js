@@ -236,11 +236,11 @@ const DRAW_ROUNDS = [
 
 // ── Team tiers (pots) — single source of truth derived from the draw rounds ──
 const TIER_META = {
-  top:    { label:'TOP',    short:'TOP', cls:'tier-top' },
-  pot1:   { label:'POT 1',  short:'P1',  cls:'tier-p1'  },
-  pot2:   { label:'POT 2',  short:'P2',  cls:'tier-p2'  },
-  pot3:   { label:'POT 3',  short:'P3',  cls:'tier-p3'  },
-  bottom: { label:'BOTTOM', short:'BTM', cls:'tier-bot' }
+  top:    { label:'TOP',    short:'TOP', mini:'T', name:'Top',    cls:'tier-top' },
+  pot1:   { label:'POT 1',  short:'P1',  mini:'1', name:'Pot 1',  cls:'tier-p1'  },
+  pot2:   { label:'POT 2',  short:'P2',  mini:'2', name:'Pot 2',  cls:'tier-p2'  },
+  pot3:   { label:'POT 3',  short:'P3',  mini:'3', name:'Pot 3',  cls:'tier-p3'  },
+  bottom: { label:'BOTTOM', short:'BTM', mini:'B', name:'Bottom', cls:'tier-bot' }
 };
 const TIER_OF = {};   // team name → draw-round key (top/pot1/pot2/pot3/bottom)
 DRAW_ROUNDS.forEach(r => r.teams.forEach(t => { TIER_OF[t] = r.key; }));
@@ -253,6 +253,15 @@ function potBadge(name, short) {
   if (!k) return '';
   const m = TIER_META[k];
   return `<span class="tier-badge ${m.cls}" title="${m.label}">${short ? m.short : m.label}</span>`;
+}
+
+// Single-character badge for the knockout bracket (T/1/2/3/B) with a full-name
+// tooltip. Saves width while staying accessible (colour + letter + title).
+function potBadgeMini(name) {
+  const k = tierKey(name);
+  if (!k) return '';
+  const m = TIER_META[k];
+  return `<span class="tier-badge tier-mini ${m.cls}" title="${m.name}">${m.mini}</span>`;
 }
 
 // Short display names for the knockout bracket (data keeps the official name).
@@ -915,7 +924,7 @@ function koCardHTML(round, idx, side) {
   const nameCell = (slot, name, cls) => {
     const disp = slot ? prettySlot(name || 'TBD') : esc(shortName(name));
     const flag = slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
-    const badge = slot ? '' : potBadge(name, true);
+    const badge = slot ? '' : potBadgeMini(name);
     return `<span class="${cls}">${flag}<span class="ko-tname">${disp}</span>${badge}</span>`;
   };
 
@@ -926,7 +935,8 @@ function koCardHTML(round, idx, side) {
     if (!slot) {
       const info = ownerLineForName(name);
       if (info) {
-        ownerHTML = `<span class="ko-owner${info.empty ? ' empty' : ''}">${info.label}: ${esc(info.text)}</span>`;
+        // Just the owner name(s) — "Steve", "Steve / Ellie", or "—" (no "Owner:")
+        ownerHTML = `<span class="ko-owner${info.empty ? ' empty' : ''}">${esc(info.text)}</span>`;
       }
     }
     return `<div class="ko-team">${nameCell(slot, name, cls)}${ownerHTML}</div>`;
