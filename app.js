@@ -371,7 +371,7 @@ function freshDraw() {
 function freshState() {
   return { teams: { ...REAL_TEAMS }, scores: {}, ko: makeKO(),
            koVersion: KO_VERSION, owners: {}, owners2: {}, awards: [],
-           draw: freshDraw() };
+           draw: freshDraw(), matchTimes: {} };
 }
 
 // ── Local-only interface preferences (never shared) ──
@@ -391,8 +391,9 @@ function normalizeState(s) {
   if (!s.ko)      s.ko      = makeKO();
   if (!s.owners)  s.owners  = {};
   if (!s.owners2) s.owners2 = {};
-  if (!s.awards)  s.awards  = [];
-  if (!s.draw)    s.draw    = freshDraw();
+  if (!s.awards)     s.awards     = [];
+  if (!s.draw)       s.draw       = freshDraw();
+  if (!s.matchTimes) s.matchTimes = {};
   // Rebuild the knockout bracket if seeded by an older version.
   if (s.koVersion !== KO_VERSION) { s.ko = makeKO(); s.koVersion = KO_VERSION; }
   return s;
@@ -577,7 +578,8 @@ function allocateThirds() {
   });
 }
 
-function populateR32() {
+// Pure R32 seeding (no save/render) — reusable by the Latest Updates replay.
+function seedR32() {
   // Reset all R32 slots to their official seed labels
   R32_SLOTS.forEach(([h, a], i) => { S.ko.r32[i].h = h; S.ko.r32[i].a = a; });
 
@@ -595,9 +597,14 @@ function populateR32() {
 
   // Fill the eight best third-placed teams into their eligible slots
   allocateThirds();
+}
 
+function populateR32() {
+  seedR32();
+  syncMatchTimes();
   save();
   renderKnockout();
+  refreshLeaderboard();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -712,6 +719,297 @@ function calcSweepstake() {
   return rows.sort((a, b) =>
     b.total - a.total || b.matchPts - a.matchPts || a.owner.localeCompare(b.owner)
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LATEST UPDATES — match-by-match commentary (derived by replay)
+// ═══════════════════════════════════════════════════════════════════
+
+// Record a completion time the first time a match becomes complete, and drop it
+// if a match is reverted. Only ever called from admin actions (writes are also
+// gated by RLS), so timestamps are authored once and shared via Supabase.
+function matchComplete(kind, a, b) {
+  if (kind === 'group') {
+    const sc = S.scores[`${a}_${b}`];
+    return !!(sc && sc.h !== '' && sc.a !== '' && !isNaN(+sc.h) && !isNaN(+sc.a));
+  }
+  const m = S.ko[a][b];
+  return !isKoSlot(m.h) && !isKoSlot(m.a) && m.hs !== '' && m.as !== '' &&
+    !isNaN(+m.hs) && !isNaN(+m.as) && !!koWinner(m);
+}
+function syncMatchTimes() {
+  if (!S.matchTimes) S.matchTimes = {};
+  const now = new Date().toISOString();
+  const seen = new Set();
+  const stamp = id => { seen.add(id); if (!S.matchTimes[id]) S.matchTimes[id] = now; };
+  GROUPS.forEach(g => MATCH_PAIRS.forEach((_, i) => { if (matchComplete('group', g, i)) stamp(`g:${g}_${i}`); }));
+  ROUND_ORDER.forEach(r => S.ko[r].forEach((_, i) => { if (matchComplete('ko', r, i)) stamp(`k:${r}-${i}`); }));
+  // Drop timestamps for matches that are no longer complete
+  Object.keys(S.matchTimes).forEach(id => { if (!seen.has(id)) delete S.matchTimes[id]; });
+}
+
+function ownersOf(key) {
+  if (!key) return [];
+  const o1 = (S.owners[key] || '').trim(), o2 = (S.owners2[key] || '').trim();
+  const out = [];
+  if (o1) out.push(o1);
+  if (o2 && o2 !== o1) out.push(o2);
+  return out;
+}
+function joinNames(arr) {
+  arr = arr.filter(Boolean);
+  if (arr.length === 0) return '';
+  if (arr.length === 1) return arr[0];
+  if (arr.length === 2) return `${arr[0]} and ${arr[1]}`;
+  return `${arr.slice(0, -1).join(', ')} and ${arr[arr.length - 1]}`;
+}
+function ord(n) {
+  const s = ['th','st','nd','rd'], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function relativeTime(iso) {
+  if (!iso) return '';
+  const diff = Math.max(0, Date.now() - Date.parse(iso));
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'} ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+// Run a computation against a temporary state (existing calc fns read global S).
+function withState(temp, fn) { const prev = S; S = temp; try { return fn(); } finally { S = prev; } }
+
+// Map a group score pair to its fixture date/time + display label.
+function groupMatchMeta(g, pairIdx) {
+  const [ti, tj] = MATCH_PAIRS[pairIdx];
+  let date = null, time = null, fno = pairIdx + 1;
+  (FIXTURES[g] || []).forEach((fx, fIdx) => {
+    if (fixtureInfo(fx.home, fx.away).pairIdx === pairIdx) { date = fx.date; time = fx.time; fno = fIdx + 1; }
+  });
+  return { t1: `${g}${ti}`, t2: `${g}${tj}`, date, time, label: `Group ${g} · Match ${fno}` };
+}
+
+// All completed matches, oldest → newest (by recorded completion time).
+function completedMatchList() {
+  const list = [];
+  GROUPS.forEach((g, gi) => MATCH_PAIRS.forEach((_, i) => {
+    if (!matchComplete('group', g, i)) return;
+    const sc = S.scores[`${g}_${i}`];
+    list.push({ kind: 'group', g, pairIdx: i, scoreKey: `${g}_${i}`, sc: { h: sc.h, a: sc.a },
+                id: `g:${g}_${i}`, sortNo: gi * 6 + i });
+  }));
+  ROUND_ORDER.forEach(round => S.ko[round].forEach((m, i) => {
+    if (!matchComplete('ko', round, i)) return;
+    list.push({ kind: 'ko', round, idx: i, hs: m.hs, as: m.as, pens: m.pens, h: m.h, a: m.a,
+                id: `k:${round}-${i}`, sortNo: 100 + matchNumber(round, i) });
+  }));
+  list.forEach(it => { it.ts = (S.matchTimes && S.matchTimes[it.id]) || ''; });
+  list.sort((a, b) => (a.ts).localeCompare(b.ts) || a.sortNo - b.sortNo);
+  return list;
+}
+
+// Leaderboard snapshot after the first k completed matches (replay).
+function snapshotPrefix(list, k) {
+  const temp = {
+    teams: S.teams, owners: S.owners, owners2: S.owners2, awards: S.awards,
+    scores: {}, ko: makeKO(), koVersion: KO_VERSION, matchTimes: {}, draw: S.draw
+  };
+  const koApply = [];
+  for (let i = 0; i < k; i++) {
+    const it = list[i];
+    if (it.kind === 'group') temp.scores[it.scoreKey] = { h: it.sc.h, a: it.sc.a };
+    else koApply.push(it);
+  }
+  return withState(temp, () => {
+    // Knockout only exists once every group is decided (matches reality).
+    if (GROUPS.every(g => groupComplete(g))) {
+      seedR32();
+      koApply.forEach(it => { const d = temp.ko[it.round][it.idx]; d.hs = it.hs; d.as = it.as; d.pens = it.pens; });
+      advanceAll();
+    }
+    const board = calcSweepstake();
+    const rank = {}, totals = {}, active = {};
+    board.forEach((r, i) => {
+      rank[r.owner] = i + 1; totals[r.owner] = r.total;
+      active[r.owner] = r.keys.filter(key => !teamStatus(key).elim).length;
+    });
+    return { order: board.map(r => r.owner), rank, totals, active, n: board.length };
+  });
+}
+
+// Deterministic template picker (same on every device — no randomness).
+function pick(arr, seed) {
+  let h = 0; for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return arr[h % arr.length];
+}
+
+// Build one update card's data + commentary from before/after snapshots.
+function makeUpdate(it, before, after) {
+  const isKo = it.kind === 'ko';
+  let t1Name, t2Name, t1Key, t2Key, s1, s2, round, label, date, time, winnerName, loserName;
+
+  if (isKo) {
+    round = it.round; t1Name = it.h; t2Name = it.a;
+    t1Key = teamKeyByName(t1Name); t2Key = teamKeyByName(t2Name);
+    s1 = it.hs; s2 = it.as;
+    label = `${ROUND_LABEL[round]} · Match ${matchNumber(round, it.idx)}`;
+    const dt = KO_DATES[`${round}-${it.idx}`]; date = dt ? dt.date : null; time = dt ? dt.time : null;
+    const m = { h: it.h, a: it.a, hs: it.hs, as: it.as, pens: it.pens };
+    winnerName = koWinner(m); loserName = winnerName ? (winnerName === t1Name ? t2Name : t1Name) : null;
+  } else {
+    const meta = groupMatchMeta(it.g, it.pairIdx);
+    t1Key = meta.t1; t2Key = meta.t2; t1Name = teamName(t1Key); t2Name = teamName(t2Key);
+    s1 = it.sc.h; s2 = it.sc.a; label = meta.label; date = meta.date; time = meta.time;
+    if (+s1 > +s2) { winnerName = t1Name; loserName = t2Name; }
+    else if (+s2 > +s1) { winnerName = t2Name; loserName = t1Name; }
+  }
+
+  const owners1 = ownersOf(t1Key), owners2 = ownersOf(t2Key);
+  const affected = [...new Set([...owners1, ...owners2])];
+
+  // Points earned per affected owner (after − before), grouped by amount.
+  const byGain = {};
+  affected.forEach(o => {
+    const g = (after.totals[o] || 0) - (before.totals[o] || 0);
+    (byGain[g] = byGain[g] || []).push(o);
+  });
+  const pointLines = Object.keys(byGain).map(Number).sort((a, b) => b - a).map(g => {
+    const who = joinNames(byGain[g].map(esc));
+    return `${who} gained ${g} point${g === 1 ? '' : 's'}.`;
+  });
+
+  // ── Headline + commentary points ──
+  let headline = '';
+  const pts = [];
+
+  // Pot upset (knockout, decisive winner)
+  if (isKo && winnerName && loserName) {
+    const wk = tierKey(winnerName), lk = tierKey(loserName);
+    if (wk && lk && tierRank(winnerName) > tierRank(loserName)) {
+      const diff = tierRank(winnerName) - tierRank(loserName);
+      const wPot = TIER_META[wk].name, lPot = TIER_META[lk].name;
+      if (wk === 'bottom' && (lk === 'top' || lk === 'pot1'))
+        headline = `🤯 Giant-killing! Bottom-pot ${esc(shortName(winnerName))} knocked out ${lPot} ${esc(shortName(loserName))}!`;
+      else if (diff >= 2)
+        headline = `🤯 Giant-killing: ${wPot} ${esc(shortName(winnerName))} knocked out ${lPot} ${esc(shortName(loserName))}.`;
+      else
+        headline = `🔥 Upset! ${wPot} ${esc(shortName(winnerName))} knocked out ${lPot} ${esc(shortName(loserName))}.`;
+    }
+  }
+
+  // Podium / champion — for the Final, the trophy always leads.
+  if (isKo && round === 'final' && winnerName) {
+    if (headline) pts.unshift(headline);  // demote any upset line to a point
+    headline = `🏆 ${esc(shortName(winnerName))} are World Cup 2026 CHAMPIONS!`;
+    pts.push(`🥈 ${esc(shortName(loserName))} finish as runners-up.`);
+  } else if (isKo && round === 'tp' && winnerName) {
+    pts.push(`🥉 ${esc(shortName(winnerName))} take third place.`);
+  }
+
+  // New leader
+  if (after.order[0] && before.order[0] && after.order[0] !== before.order[0]) {
+    const h = pick([
+      `👑 ${esc(after.order[0])} is the new leader, moving above ${esc(before.order[0])}.`,
+      `👑 New leader! ${esc(after.order[0])} overtakes ${esc(before.order[0])} at the top.`
+    ], it.id);
+    if (!headline) headline = h; else pts.push(h);
+  }
+
+  // Movement for affected owners
+  affected.forEach(o => {
+    const rb = before.rank[o], ra = after.rank[o];
+    if (!rb || !ra) return;
+    if (ra < rb) {
+      const passed = after.order.filter(x => x !== o && after.rank[x] > ra && before.rank[x] < rb);
+      pts.push(passed.length
+        ? `📈 ${esc(o)} climbed from ${ord(rb)} to ${ord(ra)}, passing ${joinNames(passed.map(esc))}.`
+        : `📈 ${esc(o)} climbed from ${ord(rb)} to ${ord(ra)}.`);
+      if (ra <= 3 && rb > 3) pts.push(`🥉 ${esc(o)} moved into the top three.`);
+    } else if (ra > rb) {
+      if (ra === after.n && rb !== after.n) pts.push(`🔻 ${esc(o)} dropped to the bottom of the table.`);
+      else if (rb <= 3 && ra > 3) pts.push(`🔻 ${esc(o)} slipped out of the top three.`);
+    }
+  });
+
+  // Ties created on points (among affected owners)
+  affected.forEach(o => {
+    const level = after.order.filter(x => x !== o && after.totals[x] === after.totals[o] &&
+      before.totals[x] !== before.totals[o]);
+    if (level.length) pts.push(`🤝 ${esc(o)} and ${joinNames(level.map(esc))} are now level on ${after.totals[o]} points.`);
+  });
+
+  // Progression & elimination (knockout)
+  if (isKo && winnerName) {
+    const nextName = { r32: 'the Round of 16', r16: 'the quarter-finals', qf: 'the semi-finals', sf: 'the final' };
+    if (nextName[round]) {
+      const wo = ownersOf(teamKeyByName(winnerName));
+      pts.push(`🎟️ ${esc(shortName(winnerName))} reached ${nextName[round]}${wo.length ? `, a progression point for ${joinNames(wo.map(esc))}` : ''}.`);
+    }
+    if (round === 'sf') {
+      pts.push(`😬 ${esc(shortName(loserName))} drop into the third-place play-off.`);
+    } else if (round !== 'final' && loserName) {
+      const lo = ownersOf(teamKeyByName(loserName));
+      let line = `💔 ${esc(shortName(loserName))} were eliminated.`;
+      lo.forEach(o => {
+        const left = after.active[o];
+        if (left === 0) pts.push(`🏁 ${esc(o)} now has no teams left in the tournament.`);
+        else if (left === 1) pts.push(`🚨 ${esc(o)} now has just one team left.`);
+      });
+      if (lo.length) {
+        const counts = [...new Set(lo.map(o => after.active[o]))];
+        if (counts.length === 1 && counts[0] > 1) line += ` ${joinNames(lo.map(esc))} now ${lo.length === 1 ? 'has' : 'have'} ${counts[0]} teams remaining.`;
+      }
+      if (!headline) headline = line; else pts.push(line);
+    }
+  }
+
+  // Group qualification (when this match completes the whole group stage)
+  if (!isKo && GROUPS.every(g => groupComplete(g)) && S.matchTimes) {
+    // Mention only if this match is the last group completion in the prefix
+    // (handled implicitly — the +progression appears in the points delta).
+  }
+
+  // Fallbacks
+  if (!headline) {
+    const topGain = pointLines[0];
+    headline = pick([
+      affected.length ? `⚽ ${esc(shortName(winnerName || t1Name))} ${s1}–${s2} ${esc(shortName(loserName || t2Name))} — result is in.` : `⚽ Result confirmed.`,
+      `⚽ ${esc(shortName(t1Name))} ${s1}–${s2} ${esc(shortName(t2Name))} — points on the board.`
+    ], it.id);
+  }
+  if (pts.length === 0 && pointLines.every(l => / 0 points\.$/.test(l))) {
+    pts.push('No change at the top of the table.');
+  }
+
+  // De-duplicate and cap commentary (points lines first, then events)
+  const seen = new Set([headline]);
+  const commentary = [...pointLines, ...pts].filter(l => l && !seen.has(l) && seen.add(l)).slice(0, 3);
+
+  return {
+    id: it.id, label, date, time, ts: it.ts,
+    t1: { name: t1Name, flag: getFlag(t1Name), score: s1, owners: owners1, badge: tierKey(t1Name) },
+    t2: { name: t2Name, flag: getFlag(t2Name), score: s2, owners: owners2, badge: tierKey(t2Name) },
+    winnerName, headline, commentary
+  };
+}
+
+// The three most recent completed matches, newest first, with commentary.
+function buildUpdates() {
+  const list = completedMatchList();
+  const N = list.length;
+  if (N === 0) return [];
+  const show = Math.min(3, N);
+  const snaps = {};
+  for (let k = N; k >= N - show; k--) snaps[k] = snapshotPrefix(list, k);
+  const out = [];
+  for (let j = 0; j < show; j++) {
+    const i = N - 1 - j;                 // newest first
+    out.push(makeUpdate(list[i], snaps[i], snaps[i + 1]));
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -901,6 +1199,7 @@ function renderGroups() {
           if (!S.scores[`${g}_${pairIdx}`]) S.scores[`${g}_${pairIdx}`] = { h:'', a:'' };
           const pairSide = (side === 'h') ? (flipped ? 'a' : 'h') : (flipped ? 'h' : 'a');
           S.scores[`${g}_${pairIdx}`][pairSide] = e.target.value;
+          syncMatchTimes();
           save();
           const st = document.getElementById(`st-${g}`);
           if (st) st.innerHTML = standingsHTML(g);
@@ -1163,6 +1462,7 @@ function renderKnockout() {
     });
     el.addEventListener('change', () => {
       advanceAll();
+      syncMatchTimes();
       save();
       renderKnockout();
       refreshLeaderboard();
@@ -1174,6 +1474,7 @@ function renderKnockout() {
       const r = btn.dataset.r, i = parseInt(btn.dataset.i), p = btn.dataset.p;
       S.ko[r][i].pens = p;
       advanceAll();
+      syncMatchTimes();
       save();
       renderKnockout();
       refreshLeaderboard();
@@ -1433,6 +1734,52 @@ function refreshLeaderboard() {
   const rows = calcSweepstake();
   if (sumEl) sumEl.innerHTML = buildSummaryHTML(rows);
   if (tblEl) tblEl.innerHTML = buildTableHTML(rows);
+  renderUpdates();
+}
+
+// ── Latest Updates section (below the leaderboard) ──
+function buildUpdatesHTML(updates) {
+  const head = `
+    <div class="sw-section-head">
+      ⚡ Latest Updates
+      <button id="btn-rebuild-updates" class="btn btn-outline btn-sm admin-only sw-bd-toggle">↻ Rebuild</button>
+    </div>`;
+  if (!updates.length) {
+    return head + `<div class="upd-empty">No results yet — the drama starts with the first final whistle.</div>`;
+  }
+  const team = t => `
+    <span class="upd-team">
+      <span class="upd-flag">${t.flag}</span>
+      <span class="upd-tname">${esc(shortName(t.name))}</span>
+      ${t.badge ? `<span class="tier-badge tier-mini ${TIER_META[t.badge].cls}" title="${TIER_META[t.badge].name}">${TIER_META[t.badge].mini}</span>` : ''}
+      <span class="upd-tscore">${esc(t.score)}</span>
+    </span>`;
+  const cards = updates.map(u => `
+    <div class="upd-card">
+      <div class="upd-meta">${esc(u.label)}${u.date ? ` · ${fmtDate(u.date)}${u.time ? ' ' + esc(u.time) : ''}` : ''}</div>
+      <div class="upd-score">${team(u.t1)}<span class="upd-vs">v</span>${team(u.t2)}</div>
+      <div class="upd-owners">
+        <span>${u.t1.flag} ${u.t1.owners.length ? esc(joinNames(u.t1.owners)) : '—'}</span>
+        <span>${u.t2.flag} ${u.t2.owners.length ? esc(joinNames(u.t2.owners)) : '—'}</span>
+      </div>
+      <div class="upd-headline">${u.headline}</div>
+      ${u.commentary.length ? `<ul class="upd-points">${u.commentary.map(c => `<li>${c}</li>`).join('')}</ul>` : ''}
+      <div class="upd-time">Updated ${relativeTime(u.ts)}</div>
+    </div>`).join('');
+  return head + `<div class="upd-grid">${cards}</div>`;
+}
+
+function renderUpdates() {
+  const el = document.getElementById('sw-updates');
+  if (!el) return;
+  el.innerHTML = buildUpdatesHTML(buildUpdates());
+  applyAccessMode();
+  document.getElementById('btn-rebuild-updates')?.addEventListener('click', () => {
+    if (!isAdmin) return;
+    syncMatchTimes();
+    save();
+    renderUpdates();
+  });
 }
 
 function renderAwards() {
@@ -1470,7 +1817,8 @@ function renderSweepstake() {
       <div class="sw-awards-section">
         <div id="sw-awards"></div>
       </div>
-    </div>`;
+    </div>
+    <div id="sw-updates" class="sw-updates-section"></div>`;
   refreshLeaderboard();
   renderAwards();
   applyAccessMode();
@@ -1533,6 +1881,7 @@ function initButtons() {
                       Object.values(S.owners2).some(v => v && v.trim());
     S.scores = {};
     S.ko     = makeKO();
+    S.matchTimes = {};               // clear Latest Updates history
     if (hadOwners && confirm('Also reset owner names?')) {
       S.owners = {}; S.owners2 = {};
       // Owner data is driven by the draw, so reset the draw too (keeps names)
@@ -1554,6 +1903,8 @@ function initButtons() {
     S.teams  = { ...SAMPLE_TEAMS };
     S.scores = { ...SAMPLE_SCORES };
     S.ko     = makeKO();
+    S.matchTimes = {};
+    syncMatchTimes();                // stamp the loaded sample results
     save();
     renderGroups();
     renderKnockout();

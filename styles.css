@@ -830,6 +830,60 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .award-pts    { font-weight: 800; color: var(--green-500); flex-shrink: 0; }
 .btn-remove-award { flex-shrink: 0; }
 
+/* ─── Latest Updates (below the leaderboard) ─────────── */
+.sw-updates-section { margin-top: 20px; }
+.upd-empty {
+  background: var(--white);
+  border: 1px dashed var(--gray-200);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  color: var(--gray-400);
+  font-style: italic;
+  font-size: .9rem;
+}
+.upd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.upd-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-left: 4px solid var(--green-500);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.upd-meta {
+  font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--green-700); margin-bottom: 6px;
+}
+.upd-score {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 1.05rem; font-weight: 800; margin-bottom: 4px;
+}
+.upd-team { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.upd-flag { font-size: 1.1rem; flex-shrink: 0; }
+.upd-tname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upd-tscore { color: var(--green-700); margin-left: 2px; }
+.upd-vs { color: var(--gray-400); font-weight: 600; font-size: .8rem; }
+.upd-owners {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: .72rem; color: var(--gray-600); font-weight: 600;
+  margin-bottom: 8px; border-bottom: 1px solid var(--gray-100); padding-bottom: 7px;
+}
+.upd-owners span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upd-headline { font-size: .86rem; font-weight: 700; color: var(--text); line-height: 1.35; margin-bottom: 6px; }
+.upd-points { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.upd-points li { font-size: .78rem; color: var(--gray-600); line-height: 1.35; }
+.upd-time { font-size: .66rem; color: var(--gray-400); margin-top: 8px; }
+
+@media (max-width: 760px) {
+  .upd-grid { grid-template-columns: 1fr; }
+}
+
 /* ─── Assignment (draw) tab ─────────────────────────── */
 .assign-intro { margin-bottom: 16px; }
 .assign-title { font-size: 1.5rem; font-weight: 900; color: var(--green-700); }
