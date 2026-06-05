@@ -884,6 +884,9 @@ function makeUpdate(it, before, after) {
   // ── Headline + commentary points ──
   let headline = '';
   const pts = [];
+  // Knockout results are always chat-worthy (elimination / podium); group
+  // results only become chat-worthy on a notable leaderboard change.
+  let significant = isKo;
 
   // Pot upset (knockout, decisive winner)
   if (isKo && winnerName && loserName) {
@@ -916,6 +919,7 @@ function makeUpdate(it, before, after) {
       `👑 New leader! ${esc(after.order[0])} overtakes ${esc(before.order[0])} at the top.`
     ], it.id);
     if (!headline) headline = h; else pts.push(h);
+    significant = true;
   }
 
   // Movement for affected owners
@@ -927,10 +931,10 @@ function makeUpdate(it, before, after) {
       pts.push(passed.length
         ? `📈 ${esc(o)} climbed from ${ord(rb)} to ${ord(ra)}, passing ${joinNames(passed.map(esc))}.`
         : `📈 ${esc(o)} climbed from ${ord(rb)} to ${ord(ra)}.`);
-      if (ra <= 3 && rb > 3) pts.push(`🥉 ${esc(o)} moved into the top three.`);
+      if (ra <= 3 && rb > 3) { pts.push(`🥉 ${esc(o)} moved into the top three.`); significant = true; }
     } else if (ra > rb) {
-      if (ra === after.n && rb !== after.n) pts.push(`🔻 ${esc(o)} dropped to the bottom of the table.`);
-      else if (rb <= 3 && ra > 3) pts.push(`🔻 ${esc(o)} slipped out of the top three.`);
+      if (ra === after.n && rb !== after.n) { pts.push(`🔻 ${esc(o)} dropped to the bottom of the table.`); significant = true; }
+      else if (rb <= 3 && ra > 3) { pts.push(`🔻 ${esc(o)} slipped out of the top three.`); significant = true; }
     }
   });
 
@@ -992,7 +996,7 @@ function makeUpdate(it, before, after) {
     id: it.id, label, date, time, ts: it.ts,
     t1: { name: t1Name, flag: getFlag(t1Name), score: s1, owners: owners1, badge: tierKey(t1Name) },
     t2: { name: t2Name, flag: getFlag(t2Name), score: s2, owners: owners2, badge: tierKey(t2Name) },
-    winnerName, headline, commentary
+    winnerName, headline, commentary, significant
   };
 }
 
@@ -1204,6 +1208,7 @@ function renderGroups() {
           const st = document.getElementById(`st-${g}`);
           if (st) st.innerHTML = standingsHTML(g);
           refreshLeaderboard();
+          announceMatch('group', g, pairIdx);
         });
       };
       bindScore('h');
@@ -1466,6 +1471,7 @@ function renderKnockout() {
       save();
       renderKnockout();
       refreshLeaderboard();
+      announceMatch('ko', r, i);
     });
   });
 
@@ -1478,6 +1484,7 @@ function renderKnockout() {
       save();
       renderKnockout();
       refreshLeaderboard();
+      announceMatch('ko', r, i);
     });
   });
 
@@ -1844,6 +1851,12 @@ function activateTab(name) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   pane.classList.add('active');
+  // Opening the Dugout clears its unread badge and jumps to the newest message.
+  if (name === 'dugout') {
+    if (sb && typeof loadChatMessages === 'function') loadChatMessages();
+    markChatRead();
+    setTimeout(scrollChatBottom, 0);
+  }
 }
 
 function initTabs() {
@@ -2534,6 +2547,8 @@ function updateAdminUI() {
   }
   applyAccessMode();
   idleSync();
+  // Refresh chat so the moderator delete controls appear/disappear.
+  if (typeof renderMessages === 'function') renderMessages();
 }
 async function doSignIn(email, pass) {
   if (!sb) return { error: 'Not connected.' };
@@ -2688,6 +2703,313 @@ function bootError(msg, retry) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// COOKIE NOMSTERS DUGOUT (shared family chat)
+// ═══════════════════════════════════════════════════════════════════
+
+const CHAT_REACTIONS = ['⚽','😂','🔥','😭','👀','🏆'];
+let chatChannel = null;
+let chatMessages = [];
+let chatLoaded = false;
+let chatError = '';
+let chatLastSent = 0;
+let chatName     = (() => { try { return localStorage.getItem('wc_chat_name') || ''; } catch (e) { return ''; } })();
+let chatLastRead = (() => { try { return localStorage.getItem('wc_chat_lastread') || ''; } catch (e) { return ''; } })();
+
+function unesc(s) {
+  return String(s).replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+}
+function isDugoutActive() {
+  const p = document.getElementById('tab-dugout');
+  return !!(p && p.classList.contains('active'));
+}
+function chatOwnerNames() {
+  const set = new Set();
+  Object.values(S.owners  || {}).forEach(v => v && v.trim() && set.add(v.trim()));
+  Object.values(S.owners2 || {}).forEach(v => v && v.trim() && set.add(v.trim()));
+  (S.draw && S.draw.names || []).forEach(v => v && v.trim() && set.add(v.trim()));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// ── Render the Dugout shell ──
+function renderDugout() {
+  const pane = document.getElementById('tab-dugout');
+  if (!pane) return;
+  const names = chatOwnerNames();
+  const hasName = !!chatName;
+
+  const picker = `
+    <div class="chat-picker">
+      <div class="chat-picker-title">Who are you?</div>
+      <p class="chat-picker-sub">Pick your name to join the banter — just for show, no password needed.</p>
+      <div class="chat-picker-grid">
+        ${names.length
+          ? names.map(n => `<button class="chat-name-btn" data-name="${esc(n)}">${esc(n)}</button>`).join('')
+          : '<p class="chat-empty">No owner names yet — set them in the Assignment tab first.</p>'}
+      </div>
+    </div>`;
+
+  const composer = `
+    <div class="chat-reactions">
+      ${CHAT_REACTIONS.map(e => `<button class="chat-react" data-emoji="${e}" type="button">${e}</button>`).join('')}
+    </div>
+    <div class="chat-compose">
+      <textarea id="chat-input" class="chat-input" rows="1" maxlength="250" placeholder="Message the Dugout…"></textarea>
+      <button id="chat-send" class="btn btn-green chat-send" type="button">Send</button>
+    </div>
+    <div id="chat-compose-status" class="chat-compose-status"></div>`;
+
+  pane.innerHTML = `
+    <div class="chat-wrap">
+      <div class="chat-header">
+        <img class="chat-logo" src="assets/cookie-nomsters-logo.jpg" alt="" width="26" height="26">
+        <div class="chat-htext">
+          <div class="chat-title">Cookie Nomsters Dugout</div>
+          <div class="chat-sub">Matchday banter for the 12 owners</div>
+        </div>
+        ${hasName ? `<button id="chat-change-name" class="btn btn-outline btn-sm chat-change">${esc(chatName)} ✎</button>` : ''}
+      </div>
+      <div id="chat-conn" class="chat-conn"></div>
+      <div id="chat-list" class="chat-list"></div>
+      ${hasName ? composer : picker}
+    </div>`;
+
+  bindChatEvents();
+  renderMessages();
+  setChatConn();
+}
+
+function bindChatEvents() {
+  document.querySelectorAll('#tab-dugout .chat-name-btn')
+    .forEach(b => b.addEventListener('click', () => pickChatName(b.dataset.name)));
+  document.getElementById('chat-change-name')?.addEventListener('click', changeChatName);
+  document.querySelectorAll('#tab-dugout .chat-react').forEach(b =>
+    b.addEventListener('click', () => {
+      const input = document.getElementById('chat-input');
+      if (!input) return;
+      input.value = (input.value + b.dataset.emoji).slice(0, 250);
+      input.focus(); autoGrow(input);
+    }));
+  document.getElementById('chat-send')?.addEventListener('click', sendChat);
+  const input = document.getElementById('chat-input');
+  if (input) {
+    input.addEventListener('input', () => autoGrow(input));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+  }
+}
+function autoGrow(t) { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 120) + 'px'; }
+
+// ── Messages (rendered as safe text — never innerHTML for user content) ──
+function messageEl(m) {
+  const wrap = document.createElement('div');
+  const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (m.message_type === 'system') {
+    wrap.className = 'chat-msg chat-system';
+    const body = document.createElement('div'); body.className = 'chat-sys-body'; body.textContent = m.message;
+    const t = document.createElement('div'); t.className = 'chat-sys-time'; t.textContent = '⚽ Dugout update · ' + time;
+    wrap.appendChild(t); wrap.appendChild(body);
+  } else {
+    wrap.className = 'chat-msg chat-user' + (m.sender_name === chatName ? ' chat-mine' : '');
+    const head = document.createElement('div'); head.className = 'chat-msg-head';
+    const nm = document.createElement('span'); nm.className = 'chat-msg-name'; nm.textContent = m.sender_name;
+    const t = document.createElement('span'); t.className = 'chat-msg-time'; t.textContent = '· ' + time;
+    head.appendChild(nm); head.appendChild(t);
+    if (isAdmin) {
+      const del = document.createElement('button');
+      del.className = 'chat-del'; del.textContent = '✕'; del.title = 'Delete message';
+      del.addEventListener('click', () => deleteChatMessage(m.id));
+      head.appendChild(del);
+    }
+    const body = document.createElement('div'); body.className = 'chat-msg-body'; body.textContent = m.message;
+    wrap.appendChild(head); wrap.appendChild(body);
+  }
+  return wrap;
+}
+function renderMessages() {
+  const list = document.getElementById('chat-list');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!chatLoaded && !chatError) {
+    const d = document.createElement('div'); d.className = 'chat-state'; d.textContent = 'Loading messages…';
+    list.appendChild(d); return;
+  }
+  if (chatError) {
+    const d = document.createElement('div'); d.className = 'chat-state err'; d.textContent = chatError;
+    list.appendChild(d); return;
+  }
+  const visible = chatMessages.filter(m => !m.deleted_at);
+  if (visible.length === 0) {
+    const d = document.createElement('div'); d.className = 'chat-empty';
+    d.textContent = 'The Dugout is quiet — someone start the matchday banter.';
+    list.appendChild(d); return;
+  }
+  visible.forEach(m => list.appendChild(messageEl(m)));
+}
+function nearBottom(list) { return list.scrollHeight - list.scrollTop - list.clientHeight < 80; }
+function scrollChatBottom() { const l = document.getElementById('chat-list'); if (l) l.scrollTop = l.scrollHeight; }
+
+// ── Load + realtime ──
+async function loadChatMessages() {
+  if (!sb) return;
+  try {
+    const { data, error } = await sb.from('chat_messages')
+      .select('*').is('deleted_at', null)
+      .order('created_at', { ascending: false }).limit(100);
+    if (error) throw error;
+    chatMessages = (data || []).reverse();   // oldest first
+    chatLoaded = true; chatError = '';
+  } catch (e) {
+    chatError = 'Failed to load messages.'; console.warn('chat load:', e.message || e);
+  }
+  renderMessages();
+  updateUnreadBadge();
+  if (isDugoutActive()) { scrollChatBottom(); markChatRead(); }
+}
+function subscribeChat() {
+  if (!sb) return;
+  if (chatChannel) sb.removeChannel(chatChannel);
+  chatChannel = sb.channel('chat_messages_live')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, p => onChatInsert(p.new))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, p => onChatUpdate(p.new))
+    .subscribe(st => setChatConn(st));
+}
+function onChatInsert(row) {
+  if (chatMessages.some(m => m.id === row.id)) return;
+  const list = document.getElementById('chat-list');
+  const wasBottom = list ? nearBottom(list) : true;
+  chatMessages.push(row);
+  if (chatMessages.length > 100) chatMessages = chatMessages.slice(-100);
+  renderMessages();
+  if (isDugoutActive()) {
+    if (wasBottom || row.sender_name === chatName) scrollChatBottom();
+    markChatRead();
+  }
+  updateUnreadBadge();
+}
+function onChatUpdate(row) {
+  const i = chatMessages.findIndex(m => m.id === row.id);
+  if (i < 0) { if (!row.deleted_at) onChatInsert(row); return; }
+  chatMessages[i] = row;
+  renderMessages();
+  updateUnreadBadge();
+}
+
+// ── Sending ──
+function setChatStatus(msg, isErr) {
+  const el = document.getElementById('chat-compose-status');
+  if (el) { el.textContent = msg || ''; el.className = 'chat-compose-status' + (isErr ? ' err' : ''); }
+}
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const btn = document.getElementById('chat-send');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!chatName) return;
+  if (!text) { setChatStatus('Type a message first.'); return; }
+  if (text.length > 250) { setChatStatus('Max 250 characters.', true); return; }
+  const since = Date.now() - chatLastSent;
+  if (since < 2000) { setChatStatus(`Easy! Wait ${Math.ceil((2000 - since) / 1000)}s between messages.`, true); return; }
+  if (!sb) { setChatStatus('Not connected.', true); return; }
+  if (!navigator.onLine) { setChatStatus('⚠ Offline — message not sent.', true); return; }
+  if (btn) btn.disabled = true;
+  setChatStatus('Sending…');
+  try {
+    const { error } = await sb.from('chat_messages')
+      .insert({ sender_name: chatName, message: text, message_type: 'user' });
+    if (error) throw error;
+    input.value = ''; autoGrow(input); chatLastSent = Date.now(); setChatStatus('');
+  } catch (e) {
+    setChatStatus('⚠ Failed to send — try again.', true); console.warn('chat send:', e.message || e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Admin moderation ──
+async function deleteChatMessage(id) {
+  if (!isAdmin || !sb) return;
+  if (!confirm('Delete this message?')) return;
+  try {
+    const { error } = await sb.from('chat_messages')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: currentUser ? currentUser.id : null })
+      .eq('id', id);
+    if (error) throw error;
+    const i = chatMessages.findIndex(m => m.id === id);
+    if (i >= 0) { chatMessages[i].deleted_at = new Date().toISOString(); renderMessages(); }
+  } catch (e) { alert('Could not delete the message.'); console.warn('chat delete:', e.message || e); }
+}
+
+// ── Name picker ──
+function pickChatName(n) {
+  chatName = n; try { localStorage.setItem('wc_chat_name', n); } catch (e) {}
+  renderDugout();
+  if (isDugoutActive()) { scrollChatBottom(); markChatRead(); }
+}
+function changeChatName() {
+  if (!confirm('Change your Dugout name?')) return;
+  chatName = ''; try { localStorage.removeItem('wc_chat_name'); } catch (e) {}
+  renderDugout();
+}
+
+// ── Unread badge ──
+function updateUnreadBadge() {
+  const badge = document.getElementById('dugout-badge');
+  if (!badge) return;
+  const last = chatLastRead ? Date.parse(chatLastRead) : 0;
+  const count = chatMessages.filter(m =>
+    !m.deleted_at && m.sender_name !== chatName && Date.parse(m.created_at) > last).length;
+  if (count > 0 && !isDugoutActive()) { badge.textContent = count > 99 ? '99+' : String(count); badge.hidden = false; }
+  else badge.hidden = true;
+}
+function markChatRead() {
+  chatLastRead = chatMessages.length ? chatMessages[chatMessages.length - 1].created_at : new Date().toISOString();
+  try { localStorage.setItem('wc_chat_lastread', chatLastRead); } catch (e) {}
+  updateUnreadBadge();
+}
+
+// ── Connection state ──
+function setChatConn(st) {
+  const el = document.getElementById('chat-conn');
+  if (!el) return;
+  if (chatError) { el.textContent = chatError; el.className = 'chat-conn err'; return; }
+  if (!navigator.onLine) { el.textContent = '⚠ Offline'; el.className = 'chat-conn err'; return; }
+  if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT' || st === 'CLOSED') { el.textContent = 'Reconnecting…'; el.className = 'chat-conn warn'; return; }
+  el.textContent = ''; el.className = 'chat-conn';
+}
+
+// ── Automatic tournament announcements (admin only) ──
+function announceMatch(kind, a, b) {
+  if (!isAdmin || !sb) return;
+  const id = kind === 'group' ? `g:${a}_${b}` : `k:${a}-${b}`;
+  if (!matchComplete(kind === 'group' ? 'group' : 'ko', a, b)) return;
+  const list = completedMatchList();
+  const i = list.findIndex(x => x.id === id);
+  if (i < 0) return;
+  let u;
+  try { u = makeUpdate(list[i], snapshotPrefix(list, i), snapshotPrefix(list, i + 1)); } catch (e) { return; }
+  if (!u.significant) return;                         // keep the chat free of noise
+  const result = `${u.t1.flag} ${u.t1.name} ${u.t1.score}–${u.t2.score} ${u.t2.name} ${u.t2.flag}`;
+  let body = `${unesc(u.headline)}\n${result}`;
+  const keyLine = u.commentary.map(unesc).find(c =>
+    /climbed|leader|eliminated|reached|level|top three|bottom|CHAMPIONS|runner|third/i.test(c));
+  if (keyLine) body += `\n${keyLine}`;
+  body = body.slice(0, 1000);
+  sb.from('chat_messages').upsert(
+    { sender_name: 'Dugout', message: body, message_type: 'system', event_key: `result:${id}` },
+    { onConflict: 'event_key' }
+  ).then(({ error }) => { if (error) console.warn('announce:', error.message || error); });
+}
+
+function initChat() {
+  renderDugout();
+  if (sb) { subscribeChat(); loadChatMessages(); }
+  // Deleted messages re-sync on refocus (RLS hides them from realtime).
+  window.addEventListener('focus', () => { if (sb && isDugoutActive()) loadChatMessages(); });
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════════════════
 
@@ -2699,6 +3021,7 @@ async function boot() {
   initAuthUI();
   applyAccessMode();
   initA2HS();
+  renderDugout();   // show the chat shell/name-picker immediately
 
   if (!window.supabase || !window.WC_CONFIG || !WC_CONFIG.SUPABASE_URL) {
     setSync('offline', 'Local only');
@@ -2750,9 +3073,10 @@ async function boot() {
   }
 
   subscribeRealtime();
+  initChat();   // chat shell + realtime + load messages (owners now from cloud)
   if (sb) sb.auth.onAuthStateChange(() => refreshAdminStatus());
   window.addEventListener('online',  idleSync);
-  window.addEventListener('offline', () => setSync('offline', '⚠ Offline'));
+  window.addEventListener('offline', () => { setSync('offline', '⚠ Offline'); setChatConn(); });
 }
 
 boot();
