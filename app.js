@@ -1728,12 +1728,11 @@ function bindAwardEvents() {
 }
 
 function refreshLeaderboard() {
-  const sumEl = document.getElementById('sw-summary');
   const tblEl = document.getElementById('sw-table');
-  if (!sumEl && !tblEl) return;
-  const rows = calcSweepstake();
-  if (sumEl) sumEl.innerHTML = buildSummaryHTML(rows);
-  if (tblEl) tblEl.innerHTML = buildTableHTML(rows);
+  if (!tblEl) return;
+  // calcSweepstake / buildSummaryHTML remain available; the summary cards were
+  // removed from the top of the Sweepstake tab to keep it compact.
+  tblEl.innerHTML = buildTableHTML(calcSweepstake());
   renderUpdates();
 }
 
@@ -1803,7 +1802,6 @@ function renderSweepstake() {
   if (!pane) return;
   const showBd = !!uiPrefs.breakdown;
   pane.innerHTML = `
-    <div id="sw-summary" class="sw-summary-bar"></div>
     <div class="sw-body">
       <div class="sw-table-section${showBd ? ' show-breakdown' : ''}" id="sw-table-section">
         <div class="sw-section-head">
