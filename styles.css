@@ -71,6 +71,37 @@ h1 { font-size: 1.45rem; font-weight: 800; letter-spacing: -.4px; line-height: 1
 .btn-green   { background: var(--green-400); color: var(--white); }
 .btn-sm      { padding: 5px 10px; font-size: .75rem; }
 
+/* ─── Pot / tier badges (accessible: colour + always a text label) ──── */
+:root {
+  --tier-top: #8a1538;  /* burgundy */
+  --tier-p1:  #d97a17;  /* amber    */
+  --tier-p2:  #1f6fb2;  /* blue     */
+  --tier-p3:  #0f8a86;  /* teal     */
+  --tier-bot: #67756c;  /* grey     */
+}
+.tier-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: .58rem;
+  font-weight: 800;
+  letter-spacing: .4px;
+  line-height: 1.4;
+  color: #fff;
+  white-space: nowrap;
+  vertical-align: middle;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.tier-top { background: var(--tier-top); }
+.tier-p1  { background: var(--tier-p1); }
+.tier-p2  { background: var(--tier-p2); }
+.tier-p3  { background: var(--tier-p3); }
+.tier-bot { background: var(--tier-bot); }
+/* Knockout badges sit tight beside the (already small) team name */
+.ko-name .tier-badge { font-size: .5rem; padding: 0 3px; letter-spacing: .2px; }
+
 /* ─── Tabs ──────────────────────────────────────────── */
 .tab-nav {
   background: var(--green-900);
@@ -167,6 +198,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   width: 1.3rem;
   text-align: center;
 }
+.slot-tier { flex-shrink: 0; display: inline-flex; }
 .team-name-input {
   border: none;
   background: transparent;
@@ -308,10 +340,19 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   margin-bottom: 12px;
 }
 
-/* Bracket connector colour */
-:root { --line: rgba(255,255,255,.5); --gut: 26px; }
+/* Bracket connector colour + responsive sizing.
+   --gut (gutter), --colw (round column width) and --cenw (centre width) scale
+   with viewport so the whole 9-column tree fits ~1280–1920px wide without
+   horizontal scrolling. */
+:root {
+  --line: rgba(255,255,255,.5);
+  --gut:  clamp(7px, 0.7vw, 16px);
+  --colw: clamp(104px, 8.1vw, 150px);
+  --cenw: clamp(152px, 12vw, 205px);
+}
 
-/* Horizontal scroll wrapper so a wide bracket never breaks the page */
+/* Wrapper — visible by default; only scrolls as a last resort (it shouldn't
+   need to on desktop now that the bracket scales to fit). */
 .bracket-scroll {
   overflow-x: auto;
   overflow-y: hidden;
@@ -319,17 +360,15 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   -webkit-overflow-scrolling: touch;
 }
 
-/* Green wall-chart panel.
-   margin-inline:auto centres it when it fits, but collapses to 0 when it is
-   wider than the scroll container so the left (Round of 32) edge is never
-   clipped and stays scrollable. */
+/* Green wall-chart panel */
 .bracket {
   display: flex;
   align-items: stretch;
   gap: var(--gut);
   width: max-content;
+  max-width: 100%;
   margin-inline: auto;
-  padding: 26px 22px;
+  padding: clamp(12px, 1.4vw, 26px) clamp(10px, 1.2vw, 22px);
   border-radius: 14px;
   background:
     radial-gradient(circle at 50% 0%, rgba(255,255,255,.06), transparent 60%),
@@ -344,7 +383,8 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .round {
   display: flex;
   flex-direction: column;
-  min-width: 176px;
+  width: var(--colw);
+  flex-shrink: 0;
 }
 
 /* Match wrapper — centres its card in an equal vertical slice */
@@ -402,7 +442,8 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
    champion banner appears. */
 .center-col {
   position: relative;
-  min-width: 230px;
+  width: var(--cenw);
+  flex-shrink: 0;
 }
 .final-block {
   position: absolute;
@@ -439,18 +480,18 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .ko-card-head {
   background: var(--gray-50);
   border-bottom: 1px solid var(--gray-200);
-  padding: 5px 9px;
-  font-size: .64rem;
+  padding: 4px 7px;
+  font-size: clamp(.52rem, .62vw, .63rem);
   font-weight: 700;
   color: var(--gray-600);
   text-transform: uppercase;
-  letter-spacing: .5px;
+  letter-spacing: .3px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
-.ko-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ko-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ko-card.final-card .ko-card-head {
   background: var(--gold);
   color: var(--green-900);
@@ -468,12 +509,12 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   font-weight: 600;
   letter-spacing: .3px;
 }
-.ko-card-body { padding: 7px 9px 9px; }
+.ko-card-body { padding: 5px 7px 7px; }
 .ko-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 5px;
+  padding: 3px 0;
 }
 .ko-row + .ko-row { border-top: 1px solid var(--gray-100); }
 /* Team name + owner line stacked vertically */
@@ -488,35 +529,35 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   min-width: 0;
   display: flex;
   align-items: center;
-  font-size: .82rem;
+  gap: 3px;
+  font-size: clamp(.72rem, .82vw, .82rem);
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
+.ko-tname { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ko-name.empty { color: var(--gray-400); font-weight: 400; font-style: italic; }
+.ko-name.empty .ko-tname { white-space: normal; }
 .ko-name.winner-name { color: var(--green-700); }
 /* Sweepstake owner line under each team */
 .ko-owner {
-  font-size: .65rem;
+  font-size: clamp(.56rem, .64vw, .65rem);
   font-weight: 600;
   color: var(--gray-400);
   line-height: 1.15;
-  padding-left: calc(.85rem + 4px); /* align under the team name, past the flag */
+  padding-left: calc(.85rem + 3px); /* align under the team name, past the flag */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .ko-owner.empty { font-style: italic; opacity: .8; }
-.kf { font-size: .85rem; flex-shrink: 0; margin-right: 4px; line-height: 1; }
+.kf { font-size: .82rem; flex-shrink: 0; line-height: 1; }
 .ko-score {
-  width: 36px;
+  width: clamp(28px, 2.4vw, 34px);
   flex-shrink: 0;
   text-align: center;
   border: 1px solid var(--gray-200);
   border-radius: 4px;
-  padding: 4px;
-  font-size: .86rem;
+  padding: 3px;
+  font-size: clamp(.74rem, .82vw, .84rem);
   font-weight: 700;
   color: var(--green-700);
   outline: none;
@@ -688,13 +729,40 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .sw-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   background: var(--gray-100);
-  border-radius: 4px;
+  border: 1px solid var(--gray-200);
+  border-radius: 5px;
   padding: 2px 6px;
   font-size: .74rem;
-  margin: 1px 2px;
+  margin: 2px 3px 2px 0;
   white-space: nowrap;
+}
+.sw-cname { font-weight: 600; }
+/* Eliminated teams: muted but still fully readable (no heavy strikethrough) */
+.sw-chip.sw-out { opacity: .55; background: var(--gray-50); }
+.sw-chip.sw-out .sw-cname { color: var(--gray-600); }
+/* Status pill */
+.sw-status {
+  font-size: .58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.sw-st-active   { background: rgba(26,122,64,.14);  color: var(--green-700); }
+.sw-st-tpplay   { background: rgba(15,138,134,.16); color: #0b6b68; }
+.sw-st-elim     { background: var(--gray-200);      color: var(--gray-600); }
+.sw-st-champion { background: var(--gold);          color: var(--green-900); }
+.sw-st-runnerup { background: #d9dde0;              color: #5a6470; }
+.sw-st-third    { background: #e6c79b;              color: #6b4a18; }
+.sw-team-summary {
+  font-size: .66rem;
+  font-weight: 700;
+  color: var(--gray-400);
+  margin-top: 4px;
 }
 
 .sw-empty {
@@ -858,21 +926,52 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   overflow: hidden;
   box-shadow: inset 0 0 30px rgba(0,0,0,.4);
 }
-.draw-reel.landed { animation: pop .5s ease; }
+.draw-reel { position: relative; }
+.draw-reel.landed { animation: pop .5s ease; box-shadow: inset 0 0 30px rgba(0,0,0,.4), 0 0 26px 4px rgba(245,197,24,.55); }
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.06); } 100% { transform: scale(1); } }
-.reel-flag { font-size: 2.6rem; line-height: 1; }
-.reel-flag.big { font-size: 3.4rem; }
+.reel-flag { font-size: clamp(2rem, 5vw, 2.6rem); line-height: 1; }
+.reel-flag.big { font-size: clamp(2.6rem, 6vw, 3.4rem); }
 .reel-name {
-  font-size: 1.8rem; font-weight: 900; color: var(--white);
+  font-size: clamp(1.3rem, 3.4vw, 1.8rem); font-weight: 900; color: var(--white);
   letter-spacing: -.5px;
 }
-.reel-name.big { color: var(--gold); font-size: 2.1rem; }
+.reel-name.big { color: var(--gold); font-size: clamp(1.5rem, 3.8vw, 2.1rem); }
+/* 3-2-1 countdown */
+.reel-count {
+  font-size: clamp(2.6rem, 7vw, 4rem); font-weight: 900; color: var(--gold);
+  animation: countPop .5s ease;
+}
+@keyframes countPop { 0% { transform: scale(.4); opacity: 0; } 50% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+
+/* Confetti burst (lightweight, pure CSS) */
+.confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.confetti i {
+  position: absolute; top: 42%; width: 8px; height: 10px; border-radius: 1px;
+  opacity: 0; animation: confettiFall var(--d, .9s) ease-out forwards;
+  transform: rotate(var(--r, 0deg));
+}
+@keyframes confettiFall {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(var(--r,0deg)); }
+  100% { opacity: 0; transform: translate(calc(var(--x, 0) * 120px), 150px) rotate(calc(var(--r,0deg) + 360deg)); }
+}
 
 .draw-reveal {
-  text-align: center; font-size: 1.1rem; color: var(--green-700);
-  min-height: 28px; margin-bottom: 12px; font-weight: 600;
+  text-align: center; font-size: clamp(1rem, 2.4vw, 1.2rem); color: var(--green-700);
+  min-height: 30px; margin-bottom: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
 }
 .draw-reveal strong { color: var(--green-900); }
+
+/* Owner whose turn it is */
+.own-field.drawing {
+  border-color: var(--gold);
+  background: rgba(245,197,24,.16);
+  box-shadow: 0 0 0 2px rgba(245,197,24,.4);
+}
+
+/* Skip hidden until an animation runs; sound toggle active state */
+.draw-skip { display: none; }
+.btn.sound-on { background: var(--green-400); color: #fff; border-color: var(--green-400); }
 
 /* Team list for the round */
 .draw-teamlist-wrap { margin-top: 12px; }
@@ -928,7 +1027,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .sum-table td:first-child { text-align: left; }
 .sum-table tbody tr:nth-child(even) { background: var(--gray-50); }
 .sum-owner { font-weight: 700; white-space: nowrap; }
-.sum-team { white-space: nowrap; font-size: .78rem; }
+.sum-team { white-space: nowrap; font-size: .78rem; display: inline-flex; align-items: center; gap: 3px; }
 .sum-empty { color: var(--gray-400); }
 .sum-total { font-weight: 900; color: var(--green-700); }
 
@@ -979,6 +1078,30 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
     transition-duration: .01ms !important;
   }
   .tab-pane.active { animation: none; }
+}
+
+/* ─── Knockout: stacked layout on small screens (no horizontal scroll) ── */
+@media (max-width: 860px) {
+  .bracket-scroll { overflow: visible; }
+  .bracket {
+    flex-direction: column;
+    width: 100%;
+    gap: 14px;
+    padding: 14px 10px;
+  }
+  .side { flex-direction: column; width: 100%; gap: 10px; }
+  .round { width: 100%; }
+  .mw { display: block; }
+  /* connectors are meaningless when stacked — hide them */
+  .ci,
+  .side-l .mw::after, .side-r .mw::after,
+  .side-l .mw::before, .side-r .mw::before { display: none; }
+  .center-col { width: 100%; }
+  .final-block { position: static; transform: none; margin: 6px 0; }
+  .tp-block { position: static; }
+  .ko-name { font-size: .9rem; }
+  .ko-owner { font-size: .72rem; }
+  .ko-score { width: 40px; font-size: .9rem; }
 }
 
 /* ─── Print styles ──────────────────────────────────── */
@@ -1043,19 +1166,22 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   }
   #tab-knockout .top-bar { display: none; }
   .bracket-scroll { overflow: visible !important; }
+  /* Explicit widths for print — vw-based clamps are unreliable on paper */
   .bracket {
-    --gut: 14px;
-    gap: 14px;
-    padding: 10px 8px;
+    --gut: 10px;
+    --colw: 122px;
+    --cenw: 150px;
+    gap: 10px;
+    padding: 8px 6px;
     background: var(--green-900) !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    min-width: 0;
-    width: 100%;
+    width: max-content;
+    margin-inline: auto;
   }
-  .side { gap: 14px; }
-  .round { min-width: 0; }
-  .center-col { min-width: 130px; }
+  .side { gap: 10px; }
+  .round { width: var(--colw); }
+  .center-col { width: var(--cenw); }
   .ko-card { break-inside: avoid; box-shadow: none; }
   .ko-card.final-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .ko-card-head { font-size: .52rem; padding: 2px 5px; }

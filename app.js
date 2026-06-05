@@ -234,6 +234,39 @@ const DRAW_ROUNDS = [
     teams:['Spain','France','Portugal','England','Argentina','Brazil'] }
 ];
 
+// ── Team tiers (pots) — single source of truth derived from the draw rounds ──
+const TIER_META = {
+  top:    { label:'TOP',    short:'TOP', cls:'tier-top' },
+  pot1:   { label:'POT 1',  short:'P1',  cls:'tier-p1'  },
+  pot2:   { label:'POT 2',  short:'P2',  cls:'tier-p2'  },
+  pot3:   { label:'POT 3',  short:'P3',  cls:'tier-p3'  },
+  bottom: { label:'BOTTOM', short:'BTM', cls:'tier-bot' }
+};
+const TIER_OF = {};   // team name → draw-round key (top/pot1/pot2/pot3/bottom)
+DRAW_ROUNDS.forEach(r => r.teams.forEach(t => { TIER_OF[t] = r.key; }));
+
+function tierKey(name) { return TIER_OF[name] || null; }
+
+// Compact, accessible pot badge (colour + text). `short` uses TOP/P1/P2/P3/BTM.
+function potBadge(name, short) {
+  const k = tierKey(name);
+  if (!k) return '';
+  const m = TIER_META[k];
+  return `<span class="tier-badge ${m.cls}" title="${m.label}">${short ? m.short : m.label}</span>`;
+}
+
+// Short display names for the knockout bracket (data keeps the official name).
+const SHORT_NAMES = {
+  'Bosnia-Herzegovina':'Bosnia',
+  'United States':'USA',
+  'Czech Republic':'Czechia',
+  'Saudi Arabia':'Saudi',
+  'South Africa':'S. Africa',
+  'South Korea':'S. Korea',
+  'New Zealand':'N. Zealand'
+};
+function shortName(name) { return SHORT_NAMES[name] || name; }
+
 // ═══════════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════════
@@ -679,6 +712,7 @@ function groupHTML(g) {
         <span class="slot-flag" id="sf-${g}-${i}">${getFlag(n)}</span>
         <input id="ti-${g}-${i}" class="team-name-input"
                type="text" value="${esc(n)}" maxlength="24" placeholder="Team ${g}${i+1}">
+        <span id="tb-${g}-${i}" class="slot-tier">${potBadge(n, true)}</span>
         ${ownerFields}
       </div>`;
   }).join('');
@@ -754,6 +788,8 @@ function renderGroups() {
 
         const sf = document.getElementById(`sf-${g}-${i}`);
         if (sf) sf.textContent = getFlag(val);
+        const tb = document.getElementById(`tb-${g}-${i}`);
+        if (tb) tb.innerHTML = potBadge(val, true);
         FIXTURES[g].forEach((fx, fIdx) => {
           const text = esc(val || REAL_TEAMS[`${g}${i}`] || `Team ${g}${i+1}`);
           const flag = getFlag(val);
@@ -876,9 +912,10 @@ function koCardHTML(round, idx, side) {
     </div>` : '';
 
   const nameCell = (slot, name, cls) => {
-    const disp = slot ? prettySlot(name || 'TBD') : esc(name);
+    const disp = slot ? prettySlot(name || 'TBD') : esc(shortName(name));
     const flag = slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
-    return `<span class="${cls}">${flag}${disp}</span>`;
+    const badge = slot ? '' : potBadge(name, true);
+    return `<span class="${cls}">${flag}<span class="ko-tname">${disp}</span>${badge}</span>`;
   };
 
   // Team name + owner line stacked vertically; owners follow the team
@@ -910,7 +947,7 @@ function koCardHTML(round, idx, side) {
       <div class="ko-card${isFinal?' final-card':''}${isTp?' tp-card':''}" id="kc-${round}-${idx}">
         <div class="ko-card-head">
           <span class="ko-label">${label}</span>
-          ${winner ? `<span class="ko-winner-label">→ ${getFlag(winner)} ${esc(winner)}</span>` : ''}
+          ${winner ? `<span class="ko-winner-label">→ ${getFlag(winner)} ${esc(shortName(winner))}</span>` : ''}
         </div>
         ${dateHTML}
         <div class="ko-card-body">
@@ -1060,6 +1097,59 @@ function buildSummaryHTML(rows) {
     </div>`;
 }
 
+// All 6 group matches have valid scores
+function groupComplete(g) {
+  return MATCH_PAIRS.every((_, idx) => {
+    const sc = S.scores[`${g}_${idx}`];
+    return sc && sc.h !== '' && sc.a !== '' &&
+      !isNaN(parseInt(sc.h)) && !isNaN(parseInt(sc.a));
+  });
+}
+
+// Has the Round of 32 been filled with real teams (Auto-fill R32 run)?
+function bracketPopulated() {
+  return S.ko.r32.some(m => !isKoSlot(m.h) || !isKoSlot(m.a));
+}
+
+// Tournament status of a team (by key). Recalculates purely from results.
+function teamStatus(key) {
+  const name = teamName(key);
+  const mk = (label, code, elim) => ({ label, code, elim });
+
+  const inBracket = ROUND_ORDER.some(r => S.ko[r].some(m => m.h === name || m.a === name));
+  if (inBracket) {
+    if (koWinner(S.ko.final[0]) === name) return mk('Champion',    'champion', false);
+    if (koLoser(S.ko.final[0])  === name) return mk('Runner-up',   'runnerup', true);
+    if (koWinner(S.ko.tp[0])    === name) return mk('Third place', 'third',    false);
+    if (koLoser(S.ko.tp[0])     === name) return mk('Eliminated',  'elim',     true); // lost 3rd-place game
+
+    const labels = { r32:'Round of 32', r16:'Round of 16', qf:'Quarter-final', sf:'Semi-final', final:'Final' };
+    let deepest = null, deepestMatch = null;
+    ['r32','r16','qf','sf','final'].forEach(r => {
+      S.ko[r].forEach(m => { if (m.h === name || m.a === name) { deepest = r; deepestMatch = m; } });
+    });
+    if (deepest) {
+      const w = koWinner(deepestMatch);
+      if (w && w !== name) {
+        // Semi-final losers drop into the third-place play-off (not out yet)
+        if (deepest === 'sf') return mk('3rd-place play-off', 'tpplay', false);
+        return mk('Eliminated', 'elim', true);
+      }
+      return mk(labels[deepest], 'active', false);
+    }
+  }
+
+  // Group stage (team not in the knockout bracket)
+  const g = key[0];
+  if (!groupComplete(g)) return mk('In play', 'active', false);
+  const standings = calcStandings(g);
+  const pos = standings.findIndex(r => r.key === key) + 1; // 1–4
+  if (pos === 4) return mk('Eliminated', 'elim', true);    // 4th never qualifies
+  if (bracketPopulated()) return mk('Eliminated', 'elim', true); // complete + drawn + not in bracket = out
+  if (pos <= 2) return mk('Qualified', 'active', false);
+  return mk('In play', 'active', false);                   // 3rd, best-third not yet determined
+}
+
 function buildTableHTML(rows) {
   if (rows.length === 0) {
     return `<div class="sw-empty">
@@ -1068,15 +1158,25 @@ function buildTableHTML(rows) {
   }
   const medals = ['🥇','🥈','🥉'];
   const body = rows.map((r, idx) => {
+    let elimCount = 0;
     const teams = r.keys.map(k => {
       const n = teamName(k);
-      return `<span class="sw-chip">${getFlag(n)} ${esc(n)}</span>`;
+      const s = teamStatus(k);
+      if (s.elim) elimCount++;
+      return `<span class="sw-chip${s.elim ? ' sw-out' : ''}">
+        <span class="sw-cflag">${getFlag(n)}</span>
+        <span class="sw-cname">${esc(shortName(n))}</span>
+        ${potBadge(n, true)}
+        <span class="sw-status sw-st-${s.code}">${esc(s.label)}</span>
+      </span>`;
     }).join('');
+    const activeCount = r.keys.length - elimCount;
+    const summary = `<div class="sw-team-summary">${activeCount} active · ${elimCount} eliminated</div>`;
     return `
       <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
         <td class="sw-rank-cell">${medals[idx] || idx+1}</td>
         <td class="sw-owner-cell">${esc(r.owner)}</td>
-        <td class="sw-teams-cell">${teams}</td>
+        <td class="sw-teams-cell">${teams}${summary}</td>
         <td class="sw-num">${r.matchPts}</td>
         <td class="sw-num">${r.progBonus}</td>
         <td class="sw-num">${r.placingBonus}</td>
@@ -1315,6 +1415,10 @@ function initButtons() {
 // ═══════════════════════════════════════════════════════════════════
 
 let drawAnimating = false;
+let skipRequested = false;   // skip the current reveal
+let drawSkipAll   = false;   // fast-forward the rest of a full-round draw
+let drawTimer     = null;
+let audioCtx      = null;
 
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -1380,39 +1484,151 @@ function ownersReady() {
   return S.draw.names.every(n => n && n.trim());
 }
 
-// ── Dramatic slot-machine reveal ──
-function animateReveal(team, ownerName, fast, done) {
+// ── Lightweight Web Audio SFX (off by default; only plays after a click) ──
+function ensureAudio() {
+  if (audioCtx) return audioCtx;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  } catch (e) { audioCtx = null; }
+  return audioCtx;
+}
+function beep(freq, dur, type, vol) {
+  if (!S.draw.sound) return;
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  try {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    o.connect(g); g.connect(ctx.destination);
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(vol || 0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t); o.stop(t + dur);
+  } catch (e) {}
+}
+const sfxTick     = () => beep(900, 0.035, 'square', 0.03);
+const sfxSuspense = () => beep(210, 0.45, 'sawtooth', 0.05);
+const sfxReveal   = () => [523, 659, 784, 1047].forEach((f, i) =>
+  setTimeout(() => beep(f, 0.18, 'triangle', 0.06), i * 90));
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function reelFace(team, big) {
+  const c = big ? ' big' : '';
+  return `<span class="reel-flag${c}">${getFlag(team)}</span>` +
+         `<span class="reel-name${c}">${esc(shortName(team))}</span>`;
+}
+
+function highlightOwner(o, on) {
+  const el = document.getElementById(`own-${o}`);
+  const field = el && el.closest ? el.closest('.own-field') : null;
+  if (field) field.classList.toggle('drawing', on);
+}
+
+function setDrawButtonsDisabled(dis) {
+  ['btn-draw-next','btn-draw-round','btn-reset-draw','btn-clear-assign','btn-save-owners']
+    .forEach(id => { const b = document.getElementById(id); if (b) b.disabled = dis; });
+  const skip = document.getElementById('btn-skip-draw');
+  if (skip && skip.style) skip.style.display = dis ? 'inline-flex' : 'none';
+}
+
+function fireConfetti() {
+  if (prefersReducedMotion()) return;
+  const host = document.getElementById('draw-reel');
+  if (!host || typeof document.createElement !== 'function') return;
+  const burst = document.createElement('div');
+  burst.className = 'confetti';
+  const colors = ['#f5c518','#1a7a40','#1f6fb2','#8a1538','#ffffff'];
+  for (let i = 0; i < 26; i++) {
+    const p = document.createElement('i');
+    p.style.setProperty('--x', (Math.random() * 2 - 1).toFixed(2));
+    p.style.setProperty('--r', (Math.random() * 360).toFixed(0) + 'deg');
+    p.style.setProperty('--d', (0.6 + Math.random() * 0.6).toFixed(2) + 's');
+    p.style.background = colors[i % colors.length];
+    p.style.left = (38 + Math.random() * 24) + '%';
+    burst.appendChild(p);
+  }
+  host.appendChild(burst);
+  setTimeout(() => burst.remove && burst.remove(), 1400);
+}
+
+// Run one dramatic owner→team reveal, then call done().
+// `fast` = full-round pace. The result (o, team) is already decided; the
+// animation is purely cosmetic and never changes it.
+function runReveal(o, team, fast, done) {
   drawAnimating = true;
-  const reel   = document.getElementById('draw-reel');
-  const reveal = document.getElementById('draw-reveal');
-  const pool   = DRAW_ROUNDS[S.draw.round].teams;
+  skipRequested = false;
+  setDrawButtonsDisabled(true);
+  highlightOwner(o, true);
+
+  const reel    = document.getElementById('draw-reel');
+  const reveal  = document.getElementById('draw-reveal');
+  const ownerNm = S.draw.names[o];
+  const pool    = DRAW_ROUNDS[S.draw.round].teams;
   if (reveal) reveal.innerHTML = '';
 
-  const total = fast ? 650 : 1900;
-  let delay   = fast ? 45 : 55;
-  let elapsed = 0;
+  const minimal = prefersReducedMotion() || drawSkipAll; // no countdown/cycle
+  const frames = [];
 
-  (function tick() {
-    const rnd = pool[Math.floor(Math.random() * pool.length)];
-    if (reel) reel.innerHTML =
-      `<span class="reel-flag">${getFlag(rnd)}</span><span class="reel-name">${esc(rnd)}</span>`;
-    elapsed += delay;
-    delay = fast ? delay + 6 : delay * 1.13; // decelerate
-    if (elapsed < total) {
-      setTimeout(tick, delay);
-    } else {
-      if (reel) {
-        reel.classList.add('landed');
-        reel.innerHTML =
-          `<span class="reel-flag big">${getFlag(team)}</span><span class="reel-name big">${esc(team)}</span>`;
-        setTimeout(() => reel.classList.remove('landed'), 600);
-      }
-      if (reveal) reveal.innerHTML =
-        `<strong>${esc(ownerName)}</strong> gets ${getFlag(team)} <strong>${esc(team)}</strong>! 🎉`;
-      drawAnimating = false;
-      done && done();
+  if (!minimal && !fast) {
+    ['3','2','1'].forEach(n => frames.push({ delay: 540, fn: () => {
+      if (reel) reel.innerHTML = `<span class="reel-count">${n}</span>`;
+      sfxTick();
+    }}));
+  }
+  if (!minimal) {
+    let delay = fast ? 45 : 55;
+    let t = 0; const total = fast ? 650 : 2050;
+    while (t < total) {
+      frames.push({ delay, fn: () => {
+        const rnd = pool[Math.floor(Math.random() * pool.length)];
+        if (reel) reel.innerHTML = reelFace(rnd, false);
+        sfxTick();
+      }});
+      t += delay; delay = fast ? delay + 7 : delay * 1.12;
     }
-  })();
+    frames.push({ delay: fast ? 140 : 420, fn: () => {
+      if (reel) reel.innerHTML = reelFace(team, false);
+      sfxSuspense();
+    }});
+  }
+
+  // Final reveal frame (always present)
+  frames.push({ delay: minimal ? 0 : 250, fn: () => {
+    if (reel) {
+      reel.classList.add('landed');
+      reel.innerHTML = reelFace(team, true);
+      setTimeout(() => reel.classList.remove('landed'), 600);
+    }
+    if (reveal) reveal.innerHTML =
+      `<strong>${esc(ownerNm)}</strong> gets ${getFlag(team)} ` +
+      `<strong>${esc(shortName(team))}</strong> ${potBadge(team, false)} 🎉`;
+    sfxReveal();
+    fireConfetti();
+  }});
+
+  let i = 0;
+  function finish() {
+    if (drawTimer) { clearTimeout(drawTimer); drawTimer = null; }
+    setTimeout(() => {
+      highlightOwner(o, false);
+      drawAnimating = false;
+      setDrawButtonsDisabled(false);
+      done && done();
+    }, (minimal || fast) ? 220 : 600);
+  }
+  function step() {
+    if (skipRequested) { frames[frames.length - 1].fn(); finish(); return; }
+    if (i >= frames.length) { finish(); return; }
+    const f = frames[i++];
+    f.fn();
+    drawTimer = setTimeout(step, f.delay);
+  }
+  step();
 }
 
 // Draw the next single owner (full dramatic animation)
@@ -1421,37 +1637,58 @@ function drawNext() {
   if (!ownersReady()) { alert('Please enter all 12 owner names first.'); return; }
   const d = S.draw;
   if (d.complete) return;
+  drawSkipAll = false;
   ensurePool();
   const o = nextOwnerIdx();
   if (o < 0) return;
-  const team = d.pool[Math.floor(Math.random() * d.pool.length)];
-  animateReveal(team, d.names[o], false, () => {
+  const team = d.pool[Math.floor(Math.random() * d.pool.length)]; // result decided up-front
+  runReveal(o, team, false, () => {
     commitPick(o, team);
     syncOwnersEverywhere();
     updateDrawStatus();
   });
 }
 
-// Draw every remaining pick in the current round (fast chained animations)
+// Draw every remaining pick in the current round; each still gets a short reveal
 function drawFullRound() {
   if (drawAnimating) return;
   if (!ownersReady()) { alert('Please enter all 12 owner names first.'); return; }
   const d = S.draw;
   if (d.complete) return;
+  drawSkipAll = false;
   ensurePool();
   const startRound = d.round;
 
   (function step() {
-    if (d.complete || d.round !== startRound) { syncOwnersEverywhere(); updateDrawStatus(); return; }
+    if (d.complete || d.round !== startRound) { drawSkipAll = false; syncOwnersEverywhere(); updateDrawStatus(); return; }
     const o = nextOwnerIdx();
-    if (o < 0) { syncOwnersEverywhere(); updateDrawStatus(); return; }
+    if (o < 0) { drawSkipAll = false; syncOwnersEverywhere(); updateDrawStatus(); return; }
     const team = d.pool[Math.floor(Math.random() * d.pool.length)];
-    animateReveal(team, d.names[o], true, () => {
+    runReveal(o, team, true, () => {
       commitPick(o, team);
       updateDrawStatus();
       step();
     });
   })();
+}
+
+// Skip the running animation (and fast-forward the rest of a full round)
+function skipDraw() {
+  if (!drawAnimating) return;
+  skipRequested = true;
+  drawSkipAll = true;
+}
+
+// Toggle draw sound effects (muted by default; persisted)
+function toggleDrawSound() {
+  S.draw.sound = !S.draw.sound;
+  save();
+  if (S.draw.sound) ensureAudio(); // create context inside the click gesture
+  const b = document.getElementById('btn-sound');
+  if (b) {
+    b.textContent = S.draw.sound ? '🔊 Sound on' : '🔇 Sound off';
+    b.classList.toggle('sound-on', S.draw.sound);
+  }
 }
 
 // Reset just the draw progress (keep owner names); clears assigned owners
@@ -1515,7 +1752,7 @@ function buildTeamListHTML() {
 function buildDrawSummaryHTML() {
   const d = S.draw;
   const cell = (team) => team
-    ? `<span class="sum-team">${getFlag(team)} ${esc(team)}</span>`
+    ? `<span class="sum-team">${getFlag(team)} ${esc(shortName(team))} ${potBadge(team, true)}</span>`
     : '<span class="sum-empty">—</span>';
 
   const rows = d.names.map((nm, oi) => {
@@ -1605,7 +1842,9 @@ function renderAssignment() {
         <div class="assign-btn-row">
           <button id="btn-draw-next"  class="btn btn-gold btn-sm">🎯 Draw next owner</button>
           <button id="btn-draw-round" class="btn btn-green btn-sm">⚡ Draw full round</button>
+          <button id="btn-skip-draw"  class="btn btn-outline btn-sm draw-skip">⏭ Skip</button>
           <button id="btn-reset-draw" class="btn btn-danger btn-sm">↺ Reset draw</button>
+          <button id="btn-sound" class="btn btn-outline btn-sm">🔇 Sound off</button>
         </div>
         <div class="draw-teamlist-wrap">
           <div class="assign-subhead">Teams this round</div>
@@ -1647,7 +1886,16 @@ function renderAssignment() {
   document.getElementById('btn-clear-assign')?.addEventListener('click', clearAssignment);
   document.getElementById('btn-draw-next')?.addEventListener('click', drawNext);
   document.getElementById('btn-draw-round')?.addEventListener('click', drawFullRound);
+  document.getElementById('btn-skip-draw')?.addEventListener('click', skipDraw);
   document.getElementById('btn-reset-draw')?.addEventListener('click', resetDraw);
+  document.getElementById('btn-sound')?.addEventListener('click', toggleDrawSound);
+
+  // Reflect saved sound preference on the toggle
+  const sb = document.getElementById('btn-sound');
+  if (sb) {
+    sb.textContent = S.draw.sound ? '🔊 Sound on' : '🔇 Sound off';
+    sb.classList.toggle('sound-on', !!S.draw.sound);
+  }
 
   updateDrawStatus();
 }
