@@ -349,35 +349,35 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   margin-bottom: 12px;
 }
 
-/* Bracket connector colour + responsive sizing.
-   --gut (gutter), --colw (round column width) and --cenw (centre width) scale
-   with viewport so the whole 9-column tree fits ~1280–1920px wide without
-   horizontal scrolling. */
+/* Bracket connector colour + connector stub width.
+   --stub is half the column gap so an outgoing stub and the next column's
+   incoming stub meet in the middle of the gap. */
 :root {
   --line: rgba(255,255,255,.5);
-  --gut:  clamp(7px, 0.7vw, 16px);
-  --colw: clamp(104px, 8.1vw, 150px);
-  --cenw: clamp(152px, 12vw, 205px);
+  --stub: clamp(1px, 0.18vw, 4px);
 }
 
-/* Wrapper — visible by default; only scrolls as a last resort (it shouldn't
-   need to on desktop now that the bracket scales to fit). */
-.bracket-scroll {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Green wall-chart panel */
+/* Green wall-chart panel — a true 9-column responsive grid. Proportional
+   minmax(0, …fr) tracks always share exactly 100% of the available width, so
+   the whole bracket fits the tab with NO horizontal scrolling at any size. */
 .bracket {
-  display: flex;
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.2fr)   /* 1  R32 left   */
+    minmax(0, 1fr)     /* 2  R16 left   */
+    minmax(0, 0.9fr)   /* 3  QF left    */
+    minmax(0, 0.82fr)  /* 4  SF left    */
+    minmax(0, 1.1fr)   /* 5  Final      */
+    minmax(0, 0.82fr)  /* 6  SF right   */
+    minmax(0, 0.9fr)   /* 7  QF right   */
+    minmax(0, 1fr)     /* 8  R16 right  */
+    minmax(0, 1.2fr);  /* 9  R32 right  */
   align-items: stretch;
-  gap: var(--gut);
-  width: max-content;
+  gap: clamp(2px, 0.35vw, 7px);
+  width: 100%;
   max-width: 100%;
-  margin-inline: auto;
-  padding: clamp(12px, 1.4vw, 26px) clamp(10px, 1.2vw, 22px);
+  box-sizing: border-box;
+  padding: clamp(10px, 1.1vw, 20px) clamp(6px, 0.7vw, 14px);
   border-radius: 14px;
   background:
     radial-gradient(circle at 50% 0%, rgba(255,255,255,.06), transparent 60%),
@@ -385,15 +385,13 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   box-shadow: inset 0 0 60px rgba(0,0,0,.3);
 }
 
-/* A half of the bracket (left or right) holds 4 round columns */
-.side { display: flex; gap: var(--gut); }
-
 /* One round column — matches share the height equally via flex:1 */
 .round {
   display: flex;
   flex-direction: column;
-  width: var(--colw);
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Match wrapper — centres its card in an equal vertical slice */
@@ -402,47 +400,43 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   display: flex;
   align-items: center;
   position: relative;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-/* ── Connector lines ──
-   Children draw a half-gutter horizontal toward the parent, the top child of
-   each pair draws the vertical that joins the pair, and each receiving card
-   draws a half-gutter incoming stub. Centres line up because every column is
-   the same height with flex:1 slices. */
+/* ── Connector lines (absolutely positioned → never affect layout width) ──
+   Each card draws a half-gap horizontal toward the centre, the top card of
+   each pair draws the vertical joining the pair, and each receiving card draws
+   a half-gap incoming stub. They live inside the column gaps and never cross
+   the outer bracket edge (edge columns only ever point inward). */
 
-/* LEFT side: every card feeds rightward (toward centre) */
-.side-l .mw::after {
+/* LEFT columns feed rightward (toward centre) */
+.mw-l::after {
   content: ''; position: absolute; top: 50%;
-  left: 100%; width: calc(var(--gut) / 2); height: 2px;
-  background: var(--line);
+  left: 100%; width: var(--stub); height: 2px; background: var(--line);
 }
-/* vertical joins each pair — only in rounds that combine into the next one */
-.side-l .round:not(:last-child) .mw:nth-child(odd)::before {
+.round.pairs .mw-l:nth-child(odd)::before {
   content: ''; position: absolute; top: 50%;
-  left: calc(100% + var(--gut) / 2); width: 2px; height: 100%;
-  background: var(--line);
+  left: calc(100% + var(--stub)); width: 2px; height: 100%; background: var(--line);
 }
 .ci-l {
   position: absolute; top: 50%; right: 100%;
-  width: calc(var(--gut) / 2); height: 2px;
-  background: var(--line);
+  width: var(--stub); height: 2px; background: var(--line);
 }
 
-/* RIGHT side: every card feeds leftward (toward centre) — mirrored */
-.side-r .mw::after {
+/* RIGHT columns feed leftward (toward centre) — mirrored */
+.mw-r::after {
   content: ''; position: absolute; top: 50%;
-  right: 100%; width: calc(var(--gut) / 2); height: 2px;
-  background: var(--line);
+  right: 100%; width: var(--stub); height: 2px; background: var(--line);
 }
-.side-r .round:not(:first-child) .mw:nth-child(odd)::before {
+.round.pairs .mw-r:nth-child(odd)::before {
   content: ''; position: absolute; top: 50%;
-  right: calc(100% + var(--gut) / 2); width: 2px; height: 100%;
-  background: var(--line);
+  right: calc(100% + var(--stub)); width: 2px; height: 100%; background: var(--line);
 }
 .ci-r {
   position: absolute; top: 50%; left: 100%;
-  width: calc(var(--gut) / 2); height: 2px;
-  background: var(--line);
+  width: var(--stub); height: 2px; background: var(--line);
 }
 
 /* ── Centre column: final vertically centred, third-place pinned below ──
@@ -451,8 +445,9 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
    champion banner appears. */
 .center-col {
   position: relative;
-  width: var(--cenw);
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .final-block {
   position: absolute;
@@ -476,9 +471,11 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 /* ── Match card ── */
 .ko-card {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: var(--white);
   border: 1px solid var(--gray-200);
-  border-radius: 10px;
+  border-radius: 9px;
   box-shadow: 0 3px 10px rgba(0,0,0,.25);
   overflow: hidden;
   position: relative;
@@ -518,12 +515,13 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   font-weight: 600;
   letter-spacing: .3px;
 }
-.ko-card-body { padding: 5px 7px 7px; }
+.ko-card-body { padding: 5px 5px 6px; }
 .ko-row {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   padding: 3px 0;
+  min-width: 0;
 }
 .ko-row + .ko-row { border-top: 1px solid var(--gray-100); }
 /* Team name + owner line stacked vertically */
@@ -560,7 +558,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .ko-owner.empty { font-style: italic; opacity: .8; }
 .kf { font-size: .82rem; flex-shrink: 0; line-height: 1; }
 .ko-score {
-  width: clamp(28px, 2.4vw, 34px);
+  width: clamp(24px, 2.1vw, 32px);
   flex-shrink: 0;
   text-align: center;
   border: 1px solid var(--gray-200);
@@ -1059,15 +1057,6 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .award-text-input:focus,
 .award-team-select:focus { outline: none; }
 
-/* Tidy scrollbar for the knockout bracket */
-.bracket-scroll::-webkit-scrollbar { height: 10px; }
-.bracket-scroll::-webkit-scrollbar-track { background: transparent; }
-.bracket-scroll::-webkit-scrollbar-thumb {
-  background: var(--gray-200);
-  border-radius: 6px;
-}
-.bracket-scroll::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
-
 /* Gentle idle pulse on the draw reel before the first spin */
 .draw-reel .reel-name:only-child { animation: idlePulse 1.8s ease-in-out infinite; }
 @keyframes idlePulse { 0%,100% { opacity: .65; } 50% { opacity: 1; } }
@@ -1082,27 +1071,25 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   .tab-pane.active { animation: none; }
 }
 
-/* ─── Knockout: stacked layout on small screens (no horizontal scroll) ── */
-@media (max-width: 860px) {
-  .bracket-scroll { overflow: visible; }
+/* ─── Knockout: stacked layout on small screens (no horizontal canvas) ──
+   Below 760px the nine-column grid collapses to a single readable column. */
+@media (max-width: 760px) {
   .bracket {
-    flex-direction: column;
-    width: 100%;
-    gap: 14px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
     padding: 14px 10px;
   }
-  .side { flex-direction: column; width: 100%; gap: 10px; }
   .round { width: 100%; }
   .mw { display: block; }
   /* connectors are meaningless when stacked — hide them */
   .ci,
-  .side-l .mw::after, .side-r .mw::after,
-  .side-l .mw::before, .side-r .mw::before { display: none; }
-  .center-col { width: 100%; }
+  .mw-l::after, .mw-r::after,
+  .round.pairs .mw-l::before, .round.pairs .mw-r::before { display: none; }
+  .center-col { width: 100%; min-height: auto; }
   .final-block { position: static; transform: none; margin: 6px 0; }
   .tp-block { position: static; }
   .ko-name { font-size: .9rem; }
-  .ko-owner { font-size: .72rem; }
+  .ko-owner { font-size: .74rem; }
   .ko-score { width: 40px; font-size: .9rem; }
 }
 
@@ -1167,23 +1154,15 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
     margin-top: 0;
   }
   #tab-knockout .top-bar { display: none; }
-  .bracket-scroll { overflow: visible !important; }
-  /* Explicit widths for print — vw-based clamps are unreliable on paper */
+  /* The grid already fits any width; just tighten gaps/colour for paper */
   .bracket {
-    --gut: 10px;
-    --colw: 122px;
-    --cenw: 150px;
-    gap: 10px;
+    gap: 6px;
     padding: 8px 6px;
     background: var(--green-900) !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    width: max-content;
-    margin-inline: auto;
+    width: 100%;
   }
-  .side { gap: 10px; }
-  .round { width: var(--colw); }
-  .center-col { width: var(--cenw); }
   .ko-card { break-inside: avoid; box-shadow: none; }
   .ko-card.final-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .ko-card-head { font-size: .52rem; padding: 2px 5px; }

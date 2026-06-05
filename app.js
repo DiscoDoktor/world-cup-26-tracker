@@ -273,7 +273,8 @@ const SHORT_NAMES = {
   'South Africa':'S. Africa',
   'South Korea':'S. Korea',
   'New Zealand':'N. Zealand',
-  'Ivory Coast':'Ivory C.'
+  'Ivory Coast':'Ivory C.',
+  'Cape Verde':'C. Verde'
 };
 function shortName(name) { return SHORT_NAMES[name] || name; }
 
@@ -925,7 +926,9 @@ function koCardHTML(round, idx, side) {
     const disp = slot ? prettySlot(name || 'TBD') : esc(shortName(name));
     const flag = slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
     const badge = slot ? '' : potBadgeMini(name);
-    return `<span class="${cls}">${flag}<span class="ko-tname">${disp}</span>${badge}</span>`;
+    // Full official name as a tooltip in case the short name is truncated
+    const title = slot ? '' : ` title="${esc(name)}"`;
+    return `<span class="${cls}">${flag}<span class="ko-tname"${title}>${disp}</span>${badge}</span>`;
   };
 
   // Team name + owner line stacked vertically; owners follow the team
@@ -976,34 +979,20 @@ function koCardHTML(round, idx, side) {
     </div>`;
 }
 
-// A single round column: list of global indices, side for connectors
+// A single round column (one of the nine bracket grid cells).
+// `pairs` rounds (R32/R16/QF) draw the vertical line joining each match pair.
 function roundColHTML(round, indices, side) {
   const cards = indices.map(i => koCardHTML(round, i, side)).join('');
-  return `<div class="round round-${round}-${side}" data-round="${round}">${cards}</div>`;
+  const pairs = (round === 'r32' || round === 'r16' || round === 'qf') ? ' pairs' : '';
+  return `<div class="round round-${round}-${side}${pairs}" data-round="${round}">${cards}</div>`;
 }
 
 function renderKnockout() {
   const pane = document.getElementById('tab-knockout');
   const finalWinner = koWinner(S.ko.final[0]);
 
-  // Left half feeds the Final's home slot, right half feeds the away slot.
-  // This matches advanceAll(): r32[0-7]→…→sf[0]→final.h ; r32[8-15]→…→sf[1]→final.a
-  const leftHTML = `
-    <div class="side side-l">
-      ${roundColHTML('r32', [0,1,2,3,4,5,6,7], 'l')}
-      ${roundColHTML('r16', [0,1,2,3], 'l')}
-      ${roundColHTML('qf',  [0,1], 'l')}
-      ${roundColHTML('sf',  [0], 'l')}
-    </div>`;
-
-  const rightHTML = `
-    <div class="side side-r">
-      ${roundColHTML('sf',  [1], 'r')}
-      ${roundColHTML('qf',  [2,3], 'r')}
-      ${roundColHTML('r16', [4,5,6,7], 'r')}
-      ${roundColHTML('r32', [8,9,10,11,12,13,14,15], 'r')}
-    </div>`;
-
+  // Nine columns feed inward to the centre. The order matches advanceAll():
+  // r32[0-7]→…→sf[0]→final.h (left) ; r32[8-15]→…→sf[1]→final.a (right).
   const championHTML = finalWinner ? `
     <div class="champion-banner">
       <div class="trophy">${getFlag(finalWinner)}</div>
@@ -1029,12 +1018,16 @@ function renderKnockout() {
         ⚡ Auto-fill R32 from Group Results
       </button>
     </div>
-    <div class="bracket-scroll">
-      <div class="bracket">
-        ${leftHTML}
-        ${centerHTML}
-        ${rightHTML}
-      </div>
+    <div class="bracket">
+      ${roundColHTML('r32', [0,1,2,3,4,5,6,7], 'l')}
+      ${roundColHTML('r16', [0,1,2,3], 'l')}
+      ${roundColHTML('qf',  [0,1], 'l')}
+      ${roundColHTML('sf',  [0], 'l')}
+      ${centerHTML}
+      ${roundColHTML('sf',  [1], 'r')}
+      ${roundColHTML('qf',  [2,3], 'r')}
+      ${roundColHTML('r16', [4,5,6,7], 'r')}
+      ${roundColHTML('r32', [8,9,10,11,12,13,14,15], 'r')}
     </div>`;
 
   // Score inputs — update on input, re-render bracket on change
