@@ -15,6 +15,12 @@
         <div>
           <h1>World Cup 2026</h1>
           <p class="subtitle">Wall Chart &amp; Results Tracker</p>
+          <div class="sponsor">
+            <span class="sponsor-by">Sponsored by</span>
+            <img class="sponsor-logo" src="assets/cookie-nomsters-logo.jpg"
+                 alt="Cookie Nomsters logo" width="22" height="22">
+            <span class="sponsor-name">Cookie Nomsters</span>
+          </div>
         </div>
       </div>
 
@@ -34,16 +40,16 @@
   </header>
 
   <nav class="tab-nav" id="tab-nav">
-    <button class="tab-btn active" data-tab="groups">🏟 Group Stage</button>
+    <button class="tab-btn active" data-tab="sweepstake">🎲 Sweepstake</button>
+    <button class="tab-btn"        data-tab="groups">🏟 Group Stage</button>
     <button class="tab-btn"        data-tab="knockout">🏆 Knockout Stage</button>
-    <button class="tab-btn"        data-tab="sweepstake">🎲 Sweepstake</button>
     <button class="tab-btn"        data-tab="assignment">🎯 Assignment</button>
   </nav>
 
   <main>
-    <div id="tab-groups"     class="tab-pane active"></div>
+    <div id="tab-sweepstake" class="tab-pane active"></div>
+    <div id="tab-groups"     class="tab-pane"></div>
     <div id="tab-knockout"   class="tab-pane"></div>
-    <div id="tab-sweepstake" class="tab-pane"></div>
     <div id="tab-assignment" class="tab-pane"></div>
   </main>
 
@@ -65,7 +71,8 @@
 
   <!-- Admin sign-in modal -->
   <div id="admin-modal" class="modal-backdrop" style="display:none">
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Administrator sign in">
+      <button id="admin-close" class="modal-close" aria-label="Close administrator sign in">✕</button>
       <div class="modal-head">🔑 Administrator sign in</div>
       <p class="modal-sub">Only the tournament administrator needs to sign in. Everyone else can view without an account.</p>
       <label class="modal-label">Email
@@ -94,6 +101,14 @@
       </div>
     </div>
   </div>
+
+  <footer class="site-footer">
+    <span>World Cup 2026 Tracker</span>
+    <span class="footer-dot">·</span>
+    <span class="footer-sponsor">Sponsored by
+      <img class="footer-logo" src="assets/cookie-nomsters-logo.jpg" alt="" width="16" height="16">
+      Cookie Nomsters</span>
+  </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>

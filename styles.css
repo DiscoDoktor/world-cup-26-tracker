@@ -1071,30 +1071,109 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   .tab-pane.active { animation: none; }
 }
 
-/* ─── Knockout: stacked layout on small screens (no horizontal canvas) ──
-   Below 760px the nine-column grid collapses to a single readable column. */
-@media (max-width: 760px) {
-  .bracket {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-    padding: 14px 10px;
-  }
-  .round { width: 100%; }
-  .mw { display: block; }
-  /* connectors are meaningless when stacked — hide them */
-  .ci,
-  .mw-l::after, .mw-r::after,
-  .round.pairs .mw-l::before, .round.pairs .mw-r::before { display: none; }
-  .center-col { width: 100%; min-height: auto; }
-  .final-block { position: static; transform: none; margin: 6px 0; }
-  .tp-block { position: static; }
-  .ko-name { font-size: .9rem; }
-  .ko-owner { font-size: .74rem; }
-  .ko-score { width: 40px; font-size: .9rem; }
+/* ─── Knockout: desktop tree vs mobile fixture list ────────────────────
+   ≤768px we hide the bracket tree entirely and show a chronological,
+   touch-friendly fixture list instead (no horizontal scrolling). */
+.ko-mobile { display: none; }
+
+@media (max-width: 768px) {
+  .bracket { display: none; }
+  .ko-mobile { display: flex; flex-direction: column; gap: 10px; }
+}
+
+.kmo-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+.kmo-card.kmo-final { border: 2px solid var(--gold); }
+.kmo-card.kmo-tp { border-color: var(--gold-dark); }
+.kmo-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 2px;
+}
+.kmo-round {
+  font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--green-700);
+}
+.kmo-wlabel { font-size: .72rem; font-weight: 800; color: var(--gold-dark); white-space: nowrap; }
+.kmo-date { font-size: .72rem; color: var(--gray-400); font-weight: 600; margin-bottom: 8px; }
+
+.kmo-team {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 6px 0;
+}
+.kmo-team + .kmo-team { border-top: 1px solid var(--gray-100); }
+.kmo-tline { display: flex; align-items: center; gap: 6px; }
+.kmo-tline .kf { font-size: 1.05rem; }
+.kmo-name {
+  flex: 1; min-width: 0;
+  font-size: .98rem; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kmo-win .kmo-name { color: var(--green-700); font-weight: 800; }
+.kmo-score {
+  width: 46px; min-height: 34px; flex-shrink: 0;
+  text-align: center;
+  border: 1px solid var(--gray-200); border-radius: 6px;
+  padding: 4px; font-size: 1rem; font-weight: 800; color: var(--green-700);
+  outline: none; font-family: inherit; -moz-appearance: textfield;
+}
+.kmo-score::-webkit-outer-spin-button,
+.kmo-score::-webkit-inner-spin-button { -webkit-appearance: none; }
+.kmo-score:focus { border-color: var(--green-500); box-shadow: 0 0 0 2px rgba(26,122,64,.15); }
+.kmo-owner {
+  font-size: .76rem; font-weight: 600; color: var(--gray-400);
+  padding-left: calc(1.05rem + 6px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.kmo-owner.empty { font-style: italic; opacity: .8; }
+/* View-only: mobile scores read as plain text too */
+body.view-only .kmo-score {
+  -webkit-appearance: none; appearance: none;
+  background: transparent; border-color: transparent; color: var(--text); opacity: 1;
 }
 
 /* ─── Shared-app: header status, modes, modals, mobile ─────────────── */
 [hidden] { display: none !important; }
+
+/* ── Cookie Nomsters sponsor branding ── */
+.sponsor {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: .7rem;
+  color: rgba(255,255,255,.8);
+}
+.sponsor-by { font-weight: 500; }
+.sponsor-logo {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  border: 1.5px solid rgba(255,255,255,.85);
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  flex-shrink: 0;
+  background: #f3ead2;
+}
+.sponsor-name { font-weight: 800; color: #fff; letter-spacing: .2px; }
+
+.site-footer {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-wrap: wrap;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  font-size: .74rem; color: var(--gray-600);
+}
+.footer-dot { color: var(--gray-400); }
+.footer-sponsor { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.footer-logo {
+  width: 16px; height: 16px; border-radius: 50%;
+  object-fit: cover; object-position: center;
+  border: 1px solid var(--gray-200); vertical-align: middle;
+}
 
 /* Header status cluster */
 .header-status {
@@ -1171,13 +1250,27 @@ body.view-only select:disabled { color: var(--text); }
   background: rgba(0,0,0,.55); padding: 18px;
 }
 .modal {
+  position: relative;
   background: var(--white);
   border-radius: 14px;
   padding: 20px 20px 18px;
   width: 100%; max-width: 380px;
+  max-height: 90vh; overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0,0,0,.4);
 }
-.modal-head { font-size: 1.1rem; font-weight: 800; color: var(--green-700); margin-bottom: 6px; }
+/* Large, comfortably tappable close button (top-right) */
+.modal-close {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 40px; height: 40px;
+  border: none; border-radius: 10px;
+  background: var(--gray-100); color: var(--gray-600);
+  font-size: 1.1rem; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-close:hover { background: var(--gray-200); }
+.modal-close:focus-visible { outline: 2px solid var(--green-500); outline-offset: 2px; }
+.modal-head { font-size: 1.1rem; font-weight: 800; color: var(--green-700); margin-bottom: 6px; padding-right: 40px; }
 .modal-sub { font-size: .82rem; color: var(--gray-600); margin-bottom: 14px; line-height: 1.45; }
 .modal-label { display: block; font-size: .76rem; font-weight: 700; color: var(--gray-600); margin-bottom: 10px; }
 .modal-label input {
@@ -1291,11 +1384,12 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
   /* Show both panes for print */
   .tab-pane { display: block !important; }
 
-  /* Groups: 4-column grid */
+  /* Groups: 4-column grid (now starts a fresh page; Sweepstake prints first) */
   #tab-groups {
     display: grid !important;
     grid-template-columns: repeat(4, 1fr) !important;
     gap: 6px !important;
+    page-break-before: always;
   }
 
   .group-card { break-inside: avoid; box-shadow: none; border: 1px solid #bbb; }
@@ -1362,7 +1456,7 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
   .champion-banner .trophy { font-size: 1.6rem; }
 
   /* Sweepstake on new page */
-  #tab-sweepstake { page-break-before: always; margin-top: 0; }
+  #tab-sweepstake { margin-top: 0; }   /* first pane — no leading page break */
   .sw-body { display: block; }
   .sw-add-form, #award-owner-preview, .btn-remove-award, .sw-bd-toggle { display: none !important; }
   .sw-table-section, .sw-awards-section { box-shadow: none; border: 1px solid #bbb; break-inside: avoid; }
@@ -1381,4 +1475,8 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
   .summary-card { box-shadow: none; border: 1px solid #bbb; break-inside: avoid; margin-top: 0; }
   .sum-table { font-size: .72rem; }
   .sum-table th, .sum-table td { padding: 4px 6px; }
+
+  /* Discreet sponsor footer on printed pages */
+  .site-footer { font-size: .62rem; padding: 6px 0; color: #444; }
+  .ko-mobile { display: none !important; }   /* print uses the desktop bracket */
 }

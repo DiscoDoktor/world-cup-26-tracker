@@ -936,6 +936,30 @@ function isKoSlot(s) {
   return !s || /^[12][A-L]$/.test(s) || /^3:/.test(s);
 }
 
+// Official FIFA match numbers (104 total): R32 = 73–88, R16 = 89–96,
+// QF = 97–100, SF = 101–102, 3rd place = 103, Final = 104.
+const MATCH_NUM_BASE = { r32: 73, r16: 89, qf: 97, sf: 101, tp: 103, final: 104 };
+function matchNumber(round, idx) { return MATCH_NUM_BASE[round] + idx; }
+
+const ROUND_LABEL = {
+  r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-final',
+  sf: 'Semi-final', tp: 'Third-place play-off', final: 'Final'
+};
+
+// Penalty-shootout picker (shared by the desktop bracket and mobile list).
+function koPensHTML(round, idx, m) {
+  const both = m.hs !== '' && m.as !== '' && !isNaN(parseInt(m.hs)) && !isNaN(parseInt(m.as));
+  if (!(both && parseInt(m.hs) === parseInt(m.as))) return '';
+  return `
+    <div class="pens-strip">
+      <span>${m.pens ? 'Pens:' : '⚠ Level — pick winner:'}</span>
+      <button class="pens-pick admin-disable${m.pens==='h'?' chosen':''}"
+              data-r="${round}" data-i="${idx}" data-p="h">${esc(m.h||'—')}</button>
+      <button class="pens-pick admin-disable${m.pens==='a'?' chosen':''}"
+              data-r="${round}" data-i="${idx}" data-p="a">${esc(m.a||'—')}</button>
+    </div>`;
+}
+
 // Build one bracket match card. `side` is 'l' | 'r' | 'c' (centre) for connectors.
 function koCardHTML(round, idx, side) {
   const m = S.ko[round][idx];
@@ -957,19 +981,7 @@ function koCardHTML(round, idx, side) {
   const dt = KO_DATES[`${round}-${idx}`];
   const dateHTML = dt ? `<div class="ko-date">${fmtDate(dt.date)} · ${dt.time}</div>` : '';
 
-  // Level scores with no pens pick yet → prompt for a winner
-  const bothScored = m.hs !== '' && m.as !== '' &&
-    !isNaN(parseInt(m.hs)) && !isNaN(parseInt(m.as));
-  const isLevel = bothScored && parseInt(m.hs) === parseInt(m.as);
-
-  const pensHTML = isLevel ? `
-    <div class="pens-strip">
-      <span>${m.pens ? 'Pens:' : '⚠ Level — pick winner:'}</span>
-      <button class="pens-pick admin-disable${m.pens==='h'?' chosen':''}"
-              data-r="${round}" data-i="${idx}" data-p="h">${esc(m.h||'—')}</button>
-      <button class="pens-pick admin-disable${m.pens==='a'?' chosen':''}"
-              data-r="${round}" data-i="${idx}" data-p="a">${esc(m.a||'—')}</button>
-    </div>` : '';
+  const pensHTML = koPensHTML(round, idx, m);
 
   const nameCell = (slot, name, cls) => {
     const disp = slot ? prettySlot(name || 'TBD') : esc(shortName(name));
@@ -1016,11 +1028,11 @@ function koCardHTML(round, idx, side) {
         <div class="ko-card-body">
           <div class="ko-row">
             ${teamBlock(hSlot, m.h, hClass)}
-            <input class="ko-score" id="ks-${round}-${idx}-h" type="number" min="0" max="99" value="${esc(m.hs)}">
+            <input class="ko-score" data-r="${round}" data-i="${idx}" data-side="h" type="number" min="0" max="99" value="${esc(m.hs)}">
           </div>
           <div class="ko-row">
             ${teamBlock(aSlot, m.a, aClass)}
-            <input class="ko-score" id="ks-${round}-${idx}-a" type="number" min="0" max="99" value="${esc(m.as)}">
+            <input class="ko-score" data-r="${round}" data-i="${idx}" data-side="a" type="number" min="0" max="99" value="${esc(m.as)}">
           </div>
           ${pensHTML}
         </div>
@@ -1034,6 +1046,66 @@ function roundColHTML(round, indices, side) {
   const cards = indices.map(i => koCardHTML(round, i, side)).join('');
   const pairs = (round === 'r32' || round === 'r16' || round === 'qf') ? ' pairs' : '';
   return `<div class="round round-${round}-${side}${pairs}" data-round="${round}">${cards}</div>`;
+}
+
+// ── Mobile knockout: a chronological list of every knockout fixture ──
+function koMobileCard(round, idx) {
+  const m = S.ko[round][idx];
+  const winner = koWinner(m);
+  const num = matchNumber(round, idx);
+  const dt = KO_DATES[`${round}-${idx}`];
+  const dateLine = dt ? `${fmtDate(dt.date)} · ${dt.time}` : 'Date TBC';
+
+  const teamRow = (name, score, side) => {
+    const slot = isKoSlot(name);
+    const disp = slot ? prettySlot(name || 'TBD') : esc(shortName(name));
+    const flag = slot ? '' : `<span class="kf">${getFlag(name)}</span>`;
+    const badge = slot ? '' : potBadgeMini(name);
+    const isWin = !slot && winner === name;
+    const info = slot ? null : ownerLineForName(name);
+    const ownerHTML = info
+      ? `<div class="kmo-owner${info.empty ? ' empty' : ''}">${esc(info.text)}</div>` : '';
+    return `
+      <div class="kmo-team${isWin ? ' kmo-win' : ''}">
+        <div class="kmo-tline">
+          ${flag}<span class="kmo-name"${slot ? '' : ` title="${esc(name)}"`}>${disp}</span>${badge}
+          <input class="ko-score kmo-score" data-r="${round}" data-i="${idx}" data-side="${side}"
+                 type="number" min="0" max="99" value="${esc(score)}">
+        </div>
+        ${ownerHTML}
+      </div>`;
+  };
+
+  return `
+    <div class="kmo-card${round === 'final' ? ' kmo-final' : ''}${round === 'tp' ? ' kmo-tp' : ''}">
+      <div class="kmo-head">
+        <span class="kmo-round">${ROUND_LABEL[round]} · Match ${num}</span>
+        ${winner ? `<span class="kmo-wlabel">→ ${getFlag(winner)} ${esc(shortName(winner))}</span>` : ''}
+      </div>
+      <div class="kmo-date">${dateLine}</div>
+      ${teamRow(m.h, m.hs, 'h')}
+      ${teamRow(m.a, m.as, 'a')}
+      ${koPensHTML(round, idx, m)}
+    </div>`;
+}
+
+function koMobileHTML() {
+  const items = [];
+  ROUND_ORDER.forEach(round => {
+    for (let i = 0; i < ROUND_META[round].size; i++) {
+      const dt = KO_DATES[`${round}-${i}`];
+      const when = dt ? Date.parse(`${dt.date}T${dt.time || '00:00'}`) : null;
+      items.push({ round, idx: i, num: matchNumber(round, i), when });
+    }
+  });
+  // Dated matches first (chronological); undated after, by official match number.
+  items.sort((a, b) => {
+    if (a.when != null && b.when != null) return a.when - b.when || a.num - b.num;
+    if (a.when != null) return -1;
+    if (b.when != null) return 1;
+    return a.num - b.num;
+  });
+  return `<div class="ko-mobile">${items.map(it => koMobileCard(it.round, it.idx)).join('')}</div>`;
 }
 
 function renderKnockout() {
@@ -1077,26 +1149,23 @@ function renderKnockout() {
       ${roundColHTML('qf',  [2,3], 'r')}
       ${roundColHTML('r16', [4,5,6,7], 'r')}
       ${roundColHTML('r32', [8,9,10,11,12,13,14,15], 'r')}
-    </div>`;
+    </div>
+    ${koMobileHTML()}`;
 
-  // Score inputs — update on input, re-render bracket on change
-  ROUND_ORDER.forEach(round => {
-    Array.from({ length: ROUND_META[round].size }, (_, idx) => {
-      ['h','a'].forEach(side => {
-        const el = document.getElementById(`ks-${round}-${idx}-${side}`);
-        if (!el) return;
-        el.addEventListener('input', e => {
-          S.ko[round][idx][side === 'h' ? 'hs' : 'as'] = e.target.value;
-          S.ko[round][idx].pens = '';
-          save();
-        });
-        el.addEventListener('change', () => {
-          advanceAll();
-          save();
-          renderKnockout();
-          refreshLeaderboard();
-        });
-      });
+  // Score inputs — bound by class + data attributes so the same handler works
+  // for both the desktop bracket and the mobile fixture list.
+  pane.querySelectorAll('.ko-score').forEach(el => {
+    const r = el.dataset.r, i = parseInt(el.dataset.i), side = el.dataset.side;
+    el.addEventListener('input', () => {
+      S.ko[r][i][side === 'h' ? 'hs' : 'as'] = el.value;
+      S.ko[r][i].pens = '';
+      save();
+    });
+    el.addEventListener('change', () => {
+      advanceAll();
+      save();
+      renderKnockout();
+      refreshLeaderboard();
     });
   });
 
@@ -1421,15 +1490,28 @@ function renderSweepstake() {
 // TABS
 // ═══════════════════════════════════════════════════════════════════
 
+function activateTab(name) {
+  const btn = document.querySelector(`.tab-btn[data-tab="${name}"]`);
+  const pane = document.getElementById(`tab-${name}`);
+  if (!btn || !pane) return;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  pane.classList.add('active');
+}
+
 function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+      activateTab(btn.dataset.tab);
+      try { sessionStorage.setItem('wc_tab', btn.dataset.tab); } catch (e) {}
     });
   });
+  // Remember the tab for this browser session. A first-time visitor has no
+  // stored tab, so the HTML default (Sweepstake) shows first.
+  let remembered = null;
+  try { remembered = sessionStorage.getItem('wc_tab'); } catch (e) {}
+  if (remembered) activateTab(remembered);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2125,13 +2207,34 @@ async function doSignOut() {
 
 function initAuthUI() {
   const modal = document.getElementById('admin-modal');
-  const open  = () => { if (modal) { modal.style.display = 'flex'; document.getElementById('admin-error').textContent = ''; document.getElementById('admin-email')?.focus(); } };
-  const close = () => { if (modal) modal.style.display = 'none'; };
+  let lastFocused = null;
+  const clearErr = () => { const e = document.getElementById('admin-error'); if (e) e.textContent = ''; };
+  const isOpen = () => modal && modal.style.display !== 'none';
+  const open = () => {
+    if (!modal) return;
+    lastFocused = document.activeElement;
+    clearErr();
+    modal.style.display = 'flex';
+    document.getElementById('admin-email')?.focus();
+  };
+  // Closing never signs anyone in — the visitor stays in public view-only mode.
+  const close = () => {
+    if (!modal) return;
+    modal.style.display = 'none';
+    clearErr();
+    if (lastFocused && lastFocused.focus) lastFocused.focus(); // restore focus to opener
+  };
 
   document.getElementById('btn-admin')?.addEventListener('click', () => {
     if (isAdmin) doSignOut(); else open();
   });
   document.getElementById('admin-cancel')?.addEventListener('click', close);
+  document.getElementById('admin-close')?.addEventListener('click', close);
+  // Click on the darkened backdrop (but not inside the modal box) closes it
+  modal?.addEventListener('click', e => { if (e.target === modal) close(); });
+  // Escape closes it
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && isOpen()) close(); });
+
   document.getElementById('admin-signin')?.addEventListener('click', async () => {
     const email = document.getElementById('admin-email').value.trim();
     const pass  = document.getElementById('admin-pass').value;
