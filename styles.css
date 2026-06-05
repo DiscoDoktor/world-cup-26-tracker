@@ -694,12 +694,12 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .sw-table thead th {
   background: var(--green-700);
   color: var(--white);
-  padding: 8px 10px;
+  padding: 5px 8px;
   text-align: center;
-  font-size: .68rem;
+  font-size: .64rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .7px;
+  letter-spacing: .5px;
   white-space: nowrap;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -707,63 +707,56 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .sw-table thead th:nth-child(2),
 .sw-table thead th:nth-child(3) { text-align: left; }
 .sw-table td {
-  padding: 7px 10px;
+  padding: 3px 8px;
   border-bottom: 1px solid var(--gray-100);
   text-align: center;
   vertical-align: middle;
 }
 .sw-table tbody tr:last-child td { border-bottom: none; }
 .sw-table tbody tr:hover { background: var(--gray-50); }
-.sw-rank-cell  { font-size: 1rem; width: 36px; text-align: center; }
-.sw-owner-cell { text-align: left; font-weight: 700; font-size: .9rem; white-space: nowrap; }
-.sw-teams-cell { text-align: left; }
-.sw-num        { font-weight: 600; color: var(--gray-600); }
-.sw-total-cell { font-size: 1rem; font-weight: 900; color: var(--green-700); }
+.sw-rank-cell  { font-size: .95rem; width: 34px; text-align: center; }
+.sw-owner-cell { text-align: left; font-weight: 700; font-size: .88rem; white-space: nowrap; }
+.sw-teams-cell { text-align: left; line-height: 1.5; }
+.sw-num        { font-weight: 600; color: var(--gray-600); font-size: .8rem; }
+.sw-total-cell {
+  font-size: clamp(1rem, 1.2vw, 1.15rem);
+  font-weight: 900;
+  color: var(--green-700);
+  width: 54px;
+}
 
-/* Top-3 row highlights */
-.sw-rank-1 { background: rgba(245,197,24,.1) !important; }
-.sw-rank-2 { background: rgba(192,192,192,.08) !important; }
-.sw-rank-3 { background: rgba(192,192,192,.04) !important; }
+/* Breakdown columns hidden by default; revealed by the toggle */
+.sw-bd { display: none; }
+.sw-table-section.show-breakdown .sw-bd { display: table-cell; }
+
+/* Breakdown toggle button sits at the right of the leaderboard heading */
+.sw-bd-toggle { margin-left: auto; font-size: .7rem; padding: 3px 9px; }
+
+/* Top-3 row highlights (kept subtle, rows stay the same height) */
+.sw-rank-1 { background: rgba(245,197,24,.14) !important; }
+.sw-rank-2 { background: rgba(192,192,192,.10) !important; }
+.sw-rank-3 { background: rgba(201,160,18,.07) !important; }
 .sw-rank-1 .sw-total-cell { color: var(--gold-dark); }
+.sw-rank-1 .sw-owner-cell { color: var(--gold-dark); }
 
 .sw-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: var(--gray-100);
   border: 1px solid var(--gray-200);
-  border-radius: 5px;
-  padding: 2px 6px;
-  font-size: .74rem;
-  margin: 2px 3px 2px 0;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: clamp(.68rem, .8vw, .74rem);
+  margin: 1px 3px 1px 0;
   white-space: nowrap;
 }
 .sw-cname { font-weight: 600; }
-/* Eliminated teams: muted but still fully readable (no heavy strikethrough) */
-.sw-chip.sw-out { opacity: .55; background: var(--gray-50); }
+/* Eliminated teams: muted but still fully readable (no strikethrough) */
+.sw-chip.sw-out { opacity: .5; background: var(--gray-50); }
 .sw-chip.sw-out .sw-cname { color: var(--gray-600); }
-/* Status pill */
-.sw-status {
-  font-size: .58rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .3px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  white-space: nowrap;
-}
-.sw-st-active   { background: rgba(26,122,64,.14);  color: var(--green-700); }
-.sw-st-tpplay   { background: rgba(15,138,134,.16); color: #0b6b68; }
-.sw-st-elim     { background: var(--gray-200);      color: var(--gray-600); }
-.sw-st-champion { background: var(--gold);          color: var(--green-900); }
-.sw-st-runnerup { background: #d9dde0;              color: #5a6470; }
-.sw-st-third    { background: #e6c79b;              color: #6b4a18; }
-.sw-team-summary {
-  font-size: .66rem;
-  font-weight: 700;
-  color: var(--gray-400);
-  margin-top: 4px;
-}
+/* Pot badge inside a chip — smaller and visually secondary */
+.sw-chip .tier-badge { font-size: .5rem; padding: 0 3px; letter-spacing: .2px; opacity: .9; }
 
 .sw-empty {
   padding: 24px;
@@ -1207,7 +1200,7 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
   /* Sweepstake on new page */
   #tab-sweepstake { page-break-before: always; margin-top: 0; }
   .sw-body { display: block; }
-  .sw-add-form, #award-owner-preview, .btn-remove-award { display: none !important; }
+  .sw-add-form, #award-owner-preview, .btn-remove-award, .sw-bd-toggle { display: none !important; }
   .sw-table-section, .sw-awards-section { box-shadow: none; border: 1px solid #bbb; break-inside: avoid; }
   .sw-summary-bar { gap: 6px; margin-bottom: 8px; }
   .sw-stat { padding: 6px 10px; }

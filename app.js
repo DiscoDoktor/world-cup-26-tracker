@@ -263,7 +263,8 @@ const SHORT_NAMES = {
   'Saudi Arabia':'Saudi',
   'South Africa':'S. Africa',
   'South Korea':'S. Korea',
-  'New Zealand':'N. Zealand'
+  'New Zealand':'N. Zealand',
+  'Ivory Coast':'Ivory C.'
 };
 function shortName(name) { return SHORT_NAMES[name] || name; }
 
@@ -1158,29 +1159,25 @@ function buildTableHTML(rows) {
   }
   const medals = ['🥇','🥈','🥉'];
   const body = rows.map((r, idx) => {
-    let elimCount = 0;
+    // Status is still computed internally (it controls greying) but no longer
+    // shown as text beside each team.
     const teams = r.keys.map(k => {
       const n = teamName(k);
-      const s = teamStatus(k);
-      if (s.elim) elimCount++;
-      return `<span class="sw-chip${s.elim ? ' sw-out' : ''}">
-        <span class="sw-cflag">${getFlag(n)}</span>
-        <span class="sw-cname">${esc(shortName(n))}</span>
-        ${potBadge(n, true)}
-        <span class="sw-status sw-st-${s.code}">${esc(s.label)}</span>
-      </span>`;
+      const out = teamStatus(k).elim;
+      return `<span class="sw-chip${out ? ' sw-out' : ''}">` +
+        `<span class="sw-cflag">${getFlag(n)}</span>` +
+        `<span class="sw-cname">${esc(shortName(n))}</span>` +
+        `${potBadge(n, true)}</span>`;
     }).join('');
-    const activeCount = r.keys.length - elimCount;
-    const summary = `<div class="sw-team-summary">${activeCount} active · ${elimCount} eliminated</div>`;
     return `
       <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
         <td class="sw-rank-cell">${medals[idx] || idx+1}</td>
         <td class="sw-owner-cell">${esc(r.owner)}</td>
-        <td class="sw-teams-cell">${teams}${summary}</td>
-        <td class="sw-num">${r.matchPts}</td>
-        <td class="sw-num">${r.progBonus}</td>
-        <td class="sw-num">${r.placingBonus}</td>
-        <td class="sw-num">${r.awardBonus}</td>
+        <td class="sw-teams-cell">${teams}</td>
+        <td class="sw-num sw-bd">${r.matchPts}</td>
+        <td class="sw-num sw-bd">${r.progBonus}</td>
+        <td class="sw-num sw-bd">${r.placingBonus}</td>
+        <td class="sw-num sw-bd">${r.awardBonus}</td>
         <td class="sw-total-cell">${r.total}</td>
       </tr>`;
   }).join('');
@@ -1189,13 +1186,13 @@ function buildTableHTML(rows) {
     <table class="sw-table">
       <thead>
         <tr>
-          <th>#</th>
+          <th class="sw-rank-cell">#</th>
           <th>Owner</th>
           <th>Teams</th>
-          <th title="Win=2 · Draw=1 · Loss=0 for every match played">Match Pts</th>
-          <th title="R32=1 · R16=2 · QF=3 · SF=4 · Final=5 · Win=6">Progression</th>
-          <th title="1st place=5 · 2nd=3 · 3rd=1">Placing</th>
-          <th title="+3 per player award">Awards</th>
+          <th class="sw-bd" title="Win=2 · Draw=1 · Loss=0 for every match played">Match</th>
+          <th class="sw-bd" title="R32=1 · R16=2 · QF=3 · SF=4 · Final=5 · Win=6">Prog</th>
+          <th class="sw-bd" title="1st place=5 · 2nd=3 · 3rd=1">Place</th>
+          <th class="sw-bd" title="+3 per player award">Award</th>
           <th>Total</th>
         </tr>
       </thead>
@@ -1332,11 +1329,17 @@ function renderAwards() {
 function renderSweepstake() {
   const pane = document.getElementById('tab-sweepstake');
   if (!pane) return;
+  const showBd = !!S.swBreakdown;
   pane.innerHTML = `
     <div id="sw-summary" class="sw-summary-bar"></div>
     <div class="sw-body">
-      <div class="sw-table-section">
-        <div class="sw-section-head">🏆 Leaderboard</div>
+      <div class="sw-table-section${showBd ? ' show-breakdown' : ''}" id="sw-table-section">
+        <div class="sw-section-head">
+          🏆 Leaderboard
+          <button id="btn-breakdown" class="btn btn-outline btn-sm sw-bd-toggle">
+            ${showBd ? 'Hide points breakdown' : 'Show points breakdown'}
+          </button>
+        </div>
         <div id="sw-table"></div>
       </div>
       <div class="sw-awards-section">
@@ -1345,6 +1348,15 @@ function renderSweepstake() {
     </div>`;
   refreshLeaderboard();
   renderAwards();
+
+  document.getElementById('btn-breakdown')?.addEventListener('click', () => {
+    S.swBreakdown = !S.swBreakdown;
+    save();
+    const sec = document.getElementById('sw-table-section');
+    const btn = document.getElementById('btn-breakdown');
+    if (sec) sec.classList.toggle('show-breakdown', S.swBreakdown);
+    if (btn) btn.textContent = S.swBreakdown ? 'Hide points breakdown' : 'Show points breakdown';
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════
