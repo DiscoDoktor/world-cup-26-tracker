@@ -2938,7 +2938,12 @@ async function deleteChatMessage(id) {
     if (error) throw error;
     const i = chatMessages.findIndex(m => m.id === id);
     if (i >= 0) { chatMessages[i].deleted_at = new Date().toISOString(); renderMessages(); }
-  } catch (e) { alert('Could not delete the message.'); console.warn('chat delete:', e.message || e); }
+  } catch (e) {
+    alert('Could not delete the message:\n' + (e.message || e) +
+          '\n\nIf this says "permission denied" or "row-level security", the chat\n' +
+          'moderation policy needs the repair SQL.');
+    console.warn('chat delete:', e);
+  }
 }
 
 // ── Name picker ──
