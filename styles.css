@@ -736,6 +736,17 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 .sw-table tbody tr:last-child td { border-bottom: none; }
 .sw-table tbody tr:hover { background: var(--gray-50); }
 .sw-rank-cell  { font-size: .95rem; width: 34px; text-align: center; }
+/* Movers & Shakers indicator (always arrow + number, never colour alone) */
+.sw-move { width: 40px; text-align: center; font-size: .72rem; font-weight: 800; white-space: nowrap; }
+th.sw-move { font-size: .6rem; }
+.sw-move-up   { color: var(--green-500); }
+.sw-move-down { color: var(--red); }
+.sw-move-none { color: var(--gray-400); }
+.sw-move-note {
+  font-size: .68rem; color: var(--gray-600);
+  margin: -2px 0 8px; line-height: 1.3;
+}
+.sw-move-note strong { color: var(--green-700); }
 .sw-owner-cell { text-align: left; font-weight: 700; font-size: .88rem; white-space: nowrap; }
 .sw-teams-cell { text-align: left; line-height: 1.5; }
 .sw-num        { font-weight: 600; color: var(--gray-600); font-size: .8rem; }

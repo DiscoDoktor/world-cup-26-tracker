@@ -1581,6 +1581,38 @@ function teamStatus(key) {
   return mk('In play', 'active', false);                   // 3rd, best-third not yet determined
 }
 
+// Movers & Shakers — each owner's rank change over the last (up to) three
+// completed matches, using the SAME replay engine as Latest Updates so the
+// arrows and the commentary always agree.
+//  current rank = position in the live leaderboard (rows order)
+//  baseline rank = leaderboard immediately before the last ≤3 completed matches
+function computeMovers(rows) {
+  const movers = {};
+  const currentRank = {};
+  rows.forEach((r, i) => { currentRank[r.owner] = i + 1; });
+  const list = completedMatchList();
+  const N = list.length;
+  if (N === 0) {                          // no results yet → no movement for anyone
+    rows.forEach(r => { movers[r.owner] = { move: 0, from: currentRank[r.owner], to: currentRank[r.owner] }; });
+    return movers;
+  }
+  const base = snapshotPrefix(list, Math.max(0, N - 3));   // before the last ≤3 matches
+  rows.forEach(r => {
+    const to = currentRank[r.owner];
+    const from = base.rank[r.owner] || to;
+    movers[r.owner] = { move: from - to, from, to };        // +ve = climbed
+  });
+  return movers;
+}
+function moverCell(m) {
+  if (!m || m.move === 0) {
+    return `<td class="sw-move sw-move-none" title="No change over the last 3 matches">—</td>`;
+  }
+  const up = m.move > 0, n = Math.abs(m.move);
+  const title = `Moved from ${ord(m.from)} to ${ord(m.to)} over the last 3 matches`;
+  return `<td class="sw-move ${up ? 'sw-move-up' : 'sw-move-down'}" title="${title}">${up ? '▲' : '▼'} ${n}</td>`;
+}
+
 function buildTableHTML(rows) {
   if (rows.length === 0) {
     return `<div class="sw-empty">
@@ -1588,6 +1620,7 @@ function buildTableHTML(rows) {
     </div>`;
   }
   const medals = ['🥇','🥈','🥉'];
+  const movers = computeMovers(rows);
   const body = rows.map((r, idx) => {
     // Status is still computed internally (it controls greying) but no longer
     // shown as text beside each team.
@@ -1604,6 +1637,7 @@ function buildTableHTML(rows) {
     return `
       <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
         <td class="sw-rank-cell">${medals[idx] || idx+1}</td>
+        ${moverCell(movers[r.owner])}
         <td class="sw-owner-cell">${esc(r.owner)}</td>
         <td class="sw-teams-cell">${teams}</td>
         <td class="sw-num sw-bd">${r.matchPts}</td>
@@ -1619,6 +1653,7 @@ function buildTableHTML(rows) {
       <thead>
         <tr>
           <th class="sw-rank-cell">#</th>
+          <th class="sw-move" title="Movement over the last 3 completed matches">Move</th>
           <th>Owner</th>
           <th>Teams</th>
           <th class="sw-bd" title="Win=2 · Draw=1 · Loss=0 for every match played">Match</th>
@@ -1817,6 +1852,10 @@ function renderSweepstake() {
           <button id="btn-breakdown" class="btn btn-outline btn-sm sw-bd-toggle">
             ${showBd ? 'Hide points breakdown' : 'Show points breakdown'}
           </button>
+        </div>
+        <div class="sw-move-note" title="Each owner's rank change over the last three completed matches">
+          <strong>Move</strong> = position change over the last 3 completed matches
+          (<span class="sw-move-up">▲ up</span> · <span class="sw-move-down">▼ down</span> · <span class="sw-move-none">— same</span>)
         </div>
         <div id="sw-table"></div>
       </div>
