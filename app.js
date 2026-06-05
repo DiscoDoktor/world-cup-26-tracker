@@ -2108,11 +2108,8 @@ function initButtons() {
   document.getElementById('btn-reset')?.addEventListener('click', async () => {
     if (!isAdmin) return;
     if (!confirm('This will reset all tournament data and permanently clear the Dugout chat. Continue?')) return;
-    // Clear the Dugout first — if it fails, abort so we never leave old messages
-    // behind or falsely claim a full reset.
-    const cleared = await clearDugout();
-    if (!cleared) return;
 
+    // 1. Reset the tournament data (local + shared).
     const hadOwners = Object.values(S.owners).some(v => v && v.trim()) ||
                       Object.values(S.owners2).some(v => v && v.trim());
     S.scores = {};
@@ -2130,6 +2127,9 @@ function initButtons() {
     renderKnockout();
     renderSweepstake();
     renderAssignment();
+
+    // 2. Clear the Dugout. Shows a clear error (never silent) if it can't.
+    await clearDugout();
   });
 
   document.getElementById('btn-sample')?.addEventListener('click', () => {
@@ -3194,8 +3194,10 @@ async function clearDugout() {
     updateUnreadBadge();
     return true;
   } catch (e) {
-    alert('The Dugout could NOT be cleared:\n' + (e.message || e) +
-          '\n\nNothing has been reset. Run the clear_dugout_messages() SQL in Supabase, then try Reset again.');
+    alert('Tournament data was reset, but the Dugout could NOT be cleared:\n\n' +
+          (e.message || e) +
+          '\n\n• If it mentions "administrator" or "permission": sign out and back in, then press Reset again.\n' +
+          '• If it mentions the function is missing: run the clear_dugout_messages() SQL.');
     console.warn('clear dugout:', e);
     return false;
   }
