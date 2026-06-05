@@ -909,6 +909,50 @@ th.sw-move { font-size: .6rem; }
   .upd-grid { grid-template-columns: 1fr; }
 }
 
+/* ─── Next Match + What's at Stake ───────────────────── */
+.sw-next-section { margin-bottom: 16px; }
+.nm-card {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-left: 4px solid var(--gold);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+}
+.nm-meta {
+  font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--green-700); margin-bottom: 8px;
+}
+.nm-teams { display: flex; align-items: stretch; gap: 10px; }
+.nm-team { flex: 1; min-width: 0; }
+.nm-tline { display: flex; align-items: center; gap: 5px; font-size: 1rem; font-weight: 800; }
+.nm-tline .kf { font-size: 1.1rem; flex-shrink: 0; }
+.nm-tname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm-tname.nm-tbd { font-size: .82rem; font-weight: 600; font-style: italic; color: var(--gray-500, #7a8a82); white-space: normal; }
+.nm-owners { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; }
+.nm-owner { font-size: .76rem; font-weight: 600; color: var(--gray-600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nm-orank { font-weight: 500; color: var(--gray-400); }
+.nm-noowner { font-style: italic; color: var(--gray-400); }
+.nm-vs { align-self: center; font-size: .78rem; font-weight: 700; color: var(--gray-400); flex-shrink: 0; }
+
+.nm-stake { margin-top: 10px; border-top: 1px dashed var(--gray-200); padding-top: 8px; }
+.nm-stake-head {
+  font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--gold-dark); cursor: pointer; list-style: none; margin-bottom: 4px;
+}
+.nm-stake-head::-webkit-details-marker { display: none; }
+.nm-stake-head::before { content: '▸ '; }
+.nm-stake[open] .nm-stake-head::before { content: '▾ '; }
+.nm-scn { margin: 4px 0; }
+.nm-scn-t { font-size: .8rem; font-weight: 700; color: var(--text); }
+.nm-scn ul { list-style: none; margin: 2px 0 0; padding-left: 4px; }
+.nm-scn li { font-size: .76rem; color: var(--gray-600); line-height: 1.35; }
+.nm-scn li::before { content: '• '; color: var(--green-500); }
+
+@media (max-width: 560px) {
+  .nm-tline { font-size: .92rem; }
+}
+
 /* ─── Assignment (draw) tab ─────────────────────────── */
 .assign-intro { margin-bottom: 16px; }
 .assign-title { font-size: 1.5rem; font-weight: 900; color: var(--green-700); }

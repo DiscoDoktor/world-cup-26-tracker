@@ -831,12 +831,12 @@ function snapshotPrefix(list, k) {
       advanceAll();
     }
     const board = calcSweepstake();
-    const rank = {}, totals = {}, active = {};
+    const rank = {}, totals = {}, active = {}, prog = {};
     board.forEach((r, i) => {
-      rank[r.owner] = i + 1; totals[r.owner] = r.total;
+      rank[r.owner] = i + 1; totals[r.owner] = r.total; prog[r.owner] = r.progBonus;
       active[r.owner] = r.keys.filter(key => !teamStatus(key).elim).length;
     });
-    return { order: board.map(r => r.owner), rank, totals, active, n: board.length };
+    return { order: board.map(r => r.owner), rank, totals, active, prog, n: board.length };
   });
 }
 
@@ -1014,6 +1014,189 @@ function buildUpdates() {
     out.push(makeUpdate(list[i], snaps[i], snaps[i + 1]));
   }
   return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// NEXT MATCH + WHAT'S AT STAKE (predictive — never mutates live data)
+// ═══════════════════════════════════════════════════════════════════
+
+function boardToMaps(board) {
+  const rank = {}, totals = {}, prog = {}, order = [];
+  board.forEach((r, i) => { rank[r.owner] = i + 1; totals[r.owner] = r.total; prog[r.owner] = r.progBonus; order.push(r.owner); });
+  return { rank, totals, prog, order, n: board.length };
+}
+
+// Which earlier match feeds a knockout slot (for "Winner of … Match N" labels).
+function koFeeder(round, idx, side) {
+  const pair = (r, i) => ({ round: r, idx: i * 2 + (side === 'a' ? 1 : 0) });
+  if (round === 'r16') return pair('r32', idx);
+  if (round === 'qf')  return pair('r16', idx);
+  if (round === 'sf')  return pair('qf', idx);
+  if (round === 'final') return { round: 'sf', idx: side === 'h' ? 0 : 1 };
+  if (round === 'tp')  return { round: 'sf', idx: side === 'h' ? 0 : 1, loser: true };
+  return null;
+}
+function koSlotInfo(round, idx, side, slot) {
+  if (slot && !isKoSlot(slot)) return { real: true, name: slot, key: teamKeyByName(slot) };
+  let source = 'To be decided';
+  if (slot && /^[12][A-L]$/.test(slot)) source = prettySlot(slot);
+  else if (slot && /^3:/.test(slot)) source = prettySlot(slot);
+  else {
+    const f = koFeeder(round, idx, side);
+    if (f) source = `${f.loser ? 'Loser' : 'Winner'} of ${ROUND_LABEL[f.round]} Match ${matchNumber(f.round, f.idx)}`;
+  }
+  return { real: false, source };
+}
+
+// The earliest fixture without a completed result (date → time → match number).
+function nextMatch() {
+  const items = [];
+  GROUPS.forEach((g, gi) => (FIXTURES[g] || []).forEach((fx, fIdx) => {
+    const { pairIdx } = fixtureInfo(fx.home, fx.away);
+    items.push({ kind: 'group', g, pairIdx, date: fx.date, time: fx.time,
+                 sortNo: gi * 6 + fIdx, complete: matchComplete('group', g, pairIdx) });
+  }));
+  ROUND_ORDER.forEach(round => S.ko[round].forEach((m, idx) => {
+    const dt = KO_DATES[`${round}-${idx}`];
+    items.push({ kind: 'ko', round, idx, date: dt ? dt.date : null, time: dt ? dt.time : null,
+                 sortNo: 1000 + matchNumber(round, idx), complete: matchComplete('ko', round, idx) });
+  }));
+  const open = items.filter(x => !x.complete);
+  if (!open.length) return null;
+  open.sort((a, b) => {
+    const ad = a.date ? Date.parse(`${a.date}T${a.time || '00:00'}`) : Infinity;
+    const bd = b.date ? Date.parse(`${b.date}T${b.time || '00:00'}`) : Infinity;
+    return ad - bd || a.sortNo - b.sortNo;
+  });
+  return open[0];
+}
+
+function potUpsetText(winner, loser) {
+  const wk = tierKey(winner), lk = tierKey(loser);
+  if (!wk || !lk || tierRank(winner) <= tierRank(loser)) return null;
+  const diff = tierRank(winner) - tierRank(loser);
+  const wPot = TIER_META[wk].name, lPot = TIER_META[lk].name;
+  if (wk === 'bottom' && (lk === 'top' || lk === 'pot1')) return `${shortName(winner)} complete a bottom-pot giant-killing of ${lPot} ${shortName(loser)}.`;
+  if (diff >= 2) return `${shortName(winner)} pull off a ${wPot} giant-killing.`;
+  return `${shortName(winner)} pull off a ${wPot} upset.`;
+}
+
+// Simulate one outcome on a DEEP COPY — never saves, never touches Supabase,
+// localStorage, the live bracket, Latest Updates, the chat, or the real board.
+function stakeScenario(nm, t1, t2, side, before) {
+  const winnerName = side === 'h' ? t1.name : t2.name;
+  const loserName  = side === 'h' ? t2.name : t1.name;
+  const winners = ownersOf(teamKeyByName(winnerName));
+  const temp = JSON.parse(JSON.stringify(S));            // isolated copy
+  const afterBoard = withState(temp, () => {
+    if (nm.kind === 'group') {
+      temp.scores[`${nm.g}_${nm.pairIdx}`] = side === 'h' ? { h: '1', a: '0' } : { h: '0', a: '1' };
+    } else {
+      const m = temp.ko[nm.round][nm.idx];
+      if (side === 'h') { m.hs = '1'; m.as = '0'; } else { m.hs = '0'; m.as = '1'; }
+      m.pens = ''; advanceAll();                          // progress the COPY only
+    }
+    return calcSweepstake();
+  });
+  if (!winners.length) return ['No owner assigned to this team yet.'];
+  const after = boardToMaps(afterBoard);
+  const bullets = [];
+  const w0 = winners[0];
+  const dTotal = (after.totals[w0] || 0) - (before.totals[w0] || 0);
+  const dProg  = (after.prog[w0]   || 0) - (before.prog[w0]   || 0);
+  // 1 — points
+  if (nm.kind === 'ko' && dProg > 0)
+    bullets.push(`${joinNames(winners)} gain ${dTotal} points: ${dTotal - dProg} for the win and ${dProg} progression point${dProg > 1 ? 's' : ''}.`);
+  else
+    bullets.push(`${joinNames(winners)}${winners.length > 1 ? ' each' : ''} gain${winners.length > 1 ? '' : 's'} ${dTotal} point${dTotal === 1 ? '' : 's'}.`);
+  // 2 — position
+  const bR = before.rank[w0], aR = after.rank[w0], n = after.n;
+  if (after.order[0] === w0 && before.order[0] !== w0) bullets.push(`${w0} is projected to become the new leader.`);
+  else if (aR < bR) {
+    const passed = after.order.filter(x => x !== w0 && after.rank[x] > aR && before.rank[x] < bR);
+    if (aR <= 3 && bR > 3) bullets.push(`${w0} is projected to enter the top three (${ord(bR)} → ${ord(aR)}).`);
+    else if (passed.length) bullets.push(`${w0} is projected to climb from ${ord(bR)} to ${ord(aR)}, passing ${joinNames(passed)}.`);
+    else bullets.push(`${w0} is projected to climb from ${ord(bR)} to ${ord(aR)}.`);
+    if (bR === n && aR < n) bullets.push(`${w0} would escape last place.`);
+  } else if (after.order[0] === w0 && before.order[0] === w0) {
+    const gap = (after.totals[w0] || 0) - (afterBoard[1] ? (after.totals[afterBoard[1].owner] || 0) : 0);
+    bullets.push(`${w0} would extend their lead to ${gap} point${gap === 1 ? '' : 's'}.`);
+  }
+  // 3 — team progression / upset (knockout)
+  if (nm.kind === 'ko') {
+    const upset = potUpsetText(winnerName, loserName);
+    const next = { r32: 'the Round of 16', r16: 'the quarter-finals', qf: 'the semi-finals', sf: 'the final' }[nm.round];
+    if (upset) bullets.push(upset);
+    else if (next) bullets.push(`${shortName(winnerName)} would reach ${next}.`);
+    else if (nm.round === 'final') bullets.push(`${shortName(winnerName)} would be crowned champions.`);
+  }
+  return bullets.slice(0, 3);
+}
+
+function buildStakeHTML(nm, t1, t2, board) {
+  const before = boardToMaps(board);
+  const verb = nm.kind === 'ko' ? 'progress' : 'win';
+  const s1 = stakeScenario(nm, t1, t2, 'h', before);
+  const s2 = stakeScenario(nm, t1, t2, 'a', before);
+  const scn = (t, bullets) => `
+    <div class="nm-scn">
+      <div class="nm-scn-t">If ${t.flag} ${esc(shortName(t.name))} ${verb}:</div>
+      <ul>${bullets.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div>`;
+  return `
+    <details class="nm-stake" open>
+      <summary class="nm-stake-head">What’s at Stake?</summary>
+      ${scn({ flag: getFlag(t1.name), name: t1.name }, s1)}
+      ${scn({ flag: getFlag(t2.name), name: t2.name }, s2)}
+    </details>`;
+}
+
+function buildNextMatchHTML() {
+  const head = `<div class="sw-section-head">⚽ Next Match</div>`;
+  const nm = nextMatch();
+  if (!nm) return head + `<div class="upd-empty">All fixtures are complete — what a tournament! 🏆</div>`;
+
+  let label, date, time, t1, t2;
+  if (nm.kind === 'group') {
+    const meta = groupMatchMeta(nm.g, nm.pairIdx);
+    label = meta.label; date = meta.date; time = meta.time;
+    t1 = { real: true, name: teamName(meta.t1), key: meta.t1 };
+    t2 = { real: true, name: teamName(meta.t2), key: meta.t2 };
+  } else {
+    label = `${ROUND_LABEL[nm.round]} · Match ${matchNumber(nm.round, nm.idx)}`;
+    const dt = KO_DATES[`${nm.round}-${nm.idx}`]; date = dt ? dt.date : null; time = dt ? dt.time : null;
+    const m = S.ko[nm.round][nm.idx];
+    t1 = koSlotInfo(nm.round, nm.idx, 'h', m.h);
+    t2 = koSlotInfo(nm.round, nm.idx, 'a', m.a);
+  }
+
+  const board = calcSweepstake();
+  const stat = {}; board.forEach((r, i) => { stat[r.owner] = { rank: i + 1, total: r.total }; });
+
+  const teamBlock = (t) => {
+    if (!t.real) return `<div class="nm-team"><div class="nm-tname nm-tbd">${esc(t.source)}</div></div>`;
+    const owners = ownersOf(t.key);
+    const ownersHtml = owners.length
+      ? owners.map(o => `<span class="nm-owner">${esc(o)} <span class="nm-orank">${stat[o] ? ord(stat[o].rank) + ' · ' + stat[o].total + ' pts' : ''}</span></span>`).join('')
+      : `<span class="nm-owner nm-noowner">no owner</span>`;
+    return `<div class="nm-team">
+      <div class="nm-tline"><span class="kf">${getFlag(t.name)}</span><span class="nm-tname">${esc(shortName(t.name))}</span>${potBadgeMini(t.name)}</div>
+      <div class="nm-owners">${ownersHtml}</div>
+    </div>`;
+  };
+
+  const stake = (t1.real && t2.real) ? buildStakeHTML(nm, t1, t2, board) : '';
+  return head + `
+    <div class="nm-card">
+      <div class="nm-meta">${esc(label)}${date ? ` · ${fmtDate(date)}${time ? ' ' + esc(time) : ''}` : ''}</div>
+      <div class="nm-teams">${teamBlock(t1)}<span class="nm-vs">v</span>${teamBlock(t2)}</div>
+      ${stake}
+    </div>`;
+}
+
+function renderNextMatch() {
+  const el = document.getElementById('sw-next');
+  if (el) el.innerHTML = buildNextMatchHTML();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1774,6 +1957,7 @@ function refreshLeaderboard() {
   if (!tblEl) return;
   // calcSweepstake / buildSummaryHTML remain available; the summary cards were
   // removed from the top of the Sweepstake tab to keep it compact.
+  renderNextMatch();
   tblEl.innerHTML = buildTableHTML(calcSweepstake());
   renderUpdates();
 }
@@ -1844,6 +2028,7 @@ function renderSweepstake() {
   if (!pane) return;
   const showBd = !!uiPrefs.breakdown;
   pane.innerHTML = `
+    <div id="sw-next" class="sw-next-section"></div>
     <div id="sw-updates" class="sw-updates-section"></div>
     <div class="sw-body">
       <div class="sw-table-section${showBd ? ' show-breakdown' : ''}" id="sw-table-section">
@@ -3023,7 +3208,26 @@ function setChatConn(st) {
   el.textContent = ''; el.className = 'chat-conn';
 }
 
-// ── Automatic tournament announcements (admin only) ──
+// One short, accurate consequence sentence for the losing owner(s).
+function loserConsequence(owners, before, after) {
+  const zero = owners.filter(o => after.active[o] === 0);
+  if (zero.length) return `${joinNames(zero)} ${zero.length > 1 ? 'have' : 'has'} no teams left in the tournament.`;
+  const one = owners.filter(o => after.active[o] === 1);
+  if (one.length) return `${joinNames(one)} ${one.length > 1 ? 'are' : 'is'} down to their final team.`;
+  let drop = null;                                    // biggest genuine rank drop
+  owners.forEach(o => {
+    const d = (after.rank[o] || 0) - (before.rank[o] || 0);
+    if (d > 0 && (!drop || d > drop.d)) drop = { o, d, from: before.rank[o], to: after.rank[o] };
+  });
+  if (drop) {
+    if (drop.from <= 3 && drop.to > 3) return `${drop.o} drops out of the top three (${ord(drop.from)} → ${ord(drop.to)}).`;
+    if (drop.to === after.n) return `${drop.o} falls to the bottom of the table.`;
+    return `${drop.o} falls from ${ord(drop.from)} to ${ord(drop.to)}.`;
+  }
+  return '';
+}
+
+// ── Automatic tournament announcements (admin only): winner AND loser impact ──
 function announceMatch(kind, a, b) {
   if (!isAdmin || !sb) return;
   const id = kind === 'group' ? `g:${a}_${b}` : `k:${a}-${b}`;
@@ -3031,15 +3235,57 @@ function announceMatch(kind, a, b) {
   const list = completedMatchList();
   const i = list.findIndex(x => x.id === id);
   if (i < 0) return;
+  const before = snapshotPrefix(list, i), after = snapshotPrefix(list, i + 1);
   let u;
-  try { u = makeUpdate(list[i], snapshotPrefix(list, i), snapshotPrefix(list, i + 1)); } catch (e) { return; }
-  if (!u.significant) return;                         // keep the chat free of noise
-  const result = `${u.t1.flag} ${u.t1.name} ${u.t1.score}–${u.t2.score} ${u.t2.name} ${u.t2.flag}`;
-  let body = `${unesc(u.headline)}\n${result}`;
-  const keyLine = u.commentary.map(unesc).find(c =>
-    /climbed|leader|eliminated|reached|level|top three|bottom|CHAMPIONS|runner|third/i.test(c));
-  if (keyLine) body += `\n${keyLine}`;
-  body = body.slice(0, 1000);
+  try { u = makeUpdate(list[i], before, after); } catch (e) { return; }
+  if (!u.significant) return;                          // keep the chat free of noise
+
+  const isKo = kind === 'ko';
+  const winnerName = u.winnerName;
+  if (!winnerName) return;                             // no decisive winner
+  const loserName = winnerName === u.t1.name ? u.t2.name : u.t1.name;
+  const winKey = teamKeyByName(winnerName), loseKey = teamKeyByName(loserName);
+  const winOwners = ownersOf(winKey), loseOwners = ownersOf(loseKey);
+
+  const lines = [];
+  lines.push(unesc(u.headline));                                            // upset / leader / champion …
+  lines.push(`${u.t1.flag} ${u.t1.name} ${u.t1.score}–${u.t2.score} ${u.t2.name} ${u.t2.flag}`);
+
+  // ── Winning owner benefit ──
+  if (winOwners.length) {
+    const w0 = winOwners[0];
+    const dTotal = (after.totals[w0] || 0) - (before.totals[w0] || 0);
+    const dProg  = (after.prog[w0]   || 0) - (before.prog[w0]   || 0);
+    const nextName = { r32: 'the Round of 16', r16: 'the quarter-finals', qf: 'the semi-finals', sf: 'the final' }[a];
+    const bR = before.rank[w0], aR = after.rank[w0];
+    if (isKo && dProg > 0 && nextName) {
+      lines.push(`🎟️ ${joinNames(winOwners)} gain ${dTotal} points as ${shortName(winnerName)} reach ${nextName}.`);
+    } else if (aR < bR) {
+      const passed = after.order.filter(x => x !== w0 && after.rank[x] > aR && before.rank[x] < bR);
+      lines.push(`📈 ${w0} climbs from ${ord(bR)} to ${ord(aR)}${passed.length ? `, passing ${joinNames(passed)}` : ''}.`);
+    } else {
+      lines.push(`📈 ${joinNames(winOwners)}${winOwners.length > 1 ? ' each' : ''} gain${winOwners.length > 1 ? '' : 's'} ${dTotal} point${dTotal === 1 ? '' : 's'}.`);
+    }
+  }
+
+  // ── Losing owner impact ──
+  const eliminated = loseKey && (() => { try { return teamStatus(loseKey).elim; } catch (e) { return false; } })();
+  if (isKo && a === 'sf' && !eliminated) {
+    lines.push(`😬 ${shortName(loserName)} drop into the third-place play-off.`);
+  } else if (eliminated) {
+    // Exact required wording: "💔 Owner(s) — flag Team eliminated." (slash for two owners)
+    const who = loseOwners.length ? `${loseOwners.join(' / ')} — ` : '';
+    lines.push(`💔 ${who}${getFlag(loserName)} ${shortName(loserName)} eliminated.`);
+    if (loseOwners.length) { const c = loserConsequence(loseOwners, before, after); if (c) lines.push(c); }
+  } else if (!isKo && loseOwners.length) {
+    // Ordinary group defeat — softer wording, never "eliminated".
+    const lo = loseOwners[0], bR = before.rank[lo], aR = after.rank[lo];
+    let line = `😬 ${joinNames(loseOwners)} earn no match points from ${shortName(loserName)}`;
+    if (aR > bR) line += ` and slip${loseOwners.length > 1 ? '' : 's'} ${aR - bR === 1 ? 'one place' : (aR - bR) + ' places'} to ${ord(aR)}`;
+    lines.push(line + '.');
+  }
+
+  const body = lines.filter(Boolean).slice(0, 5).join('\n').slice(0, 1000);
   sb.from('chat_messages').upsert(
     { sender_name: 'Dugout', message: body, message_type: 'system', event_key: `result:${id}` },
     { onConflict: 'event_key' }
