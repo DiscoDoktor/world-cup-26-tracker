@@ -1105,10 +1105,11 @@ function stakeScenario(nm, t1, t2, side, before) {
   const dTotal = (after.totals[w0] || 0) - (before.totals[w0] || 0);
   const dProg  = (after.prog[w0]   || 0) - (before.prog[w0]   || 0);
   // 1 — points
+  const multi = winners.length > 1;
   if (nm.kind === 'ko' && dProg > 0)
-    bullets.push(`${joinNames(winners)} gain ${dTotal} points: ${dTotal - dProg} for the win and ${dProg} progression point${dProg > 1 ? 's' : ''}.`);
+    bullets.push(`${joinNames(winners)} gain${multi ? '' : 's'} ${dTotal} points${multi ? ' each' : ''}: ${dTotal - dProg} for the win and ${dProg} progression point${dProg > 1 ? 's' : ''}.`);
   else
-    bullets.push(`${joinNames(winners)}${winners.length > 1 ? ' each' : ''} gain${winners.length > 1 ? '' : 's'} ${dTotal} point${dTotal === 1 ? '' : 's'}.`);
+    bullets.push(`${joinNames(winners)} gain${multi ? '' : 's'} ${dTotal} point${dTotal === 1 ? '' : 's'}${multi ? ' each' : ''}.`);
   // 2 — position
   const bR = before.rank[w0], aR = after.rank[w0], n = after.n;
   if (after.order[0] === w0 && before.order[0] !== w0) bullets.push(`${w0} is projected to become the new leader.`);
@@ -1122,15 +1123,9 @@ function stakeScenario(nm, t1, t2, side, before) {
     const gap = (after.totals[w0] || 0) - (afterBoard[1] ? (after.totals[afterBoard[1].owner] || 0) : 0);
     bullets.push(`${w0} would extend their lead to ${gap} point${gap === 1 ? '' : 's'}.`);
   }
-  // 3 — team progression / upset (knockout)
-  if (nm.kind === 'ko') {
-    const upset = potUpsetText(winnerName, loserName);
-    const next = { r32: 'the Round of 16', r16: 'the quarter-finals', qf: 'the semi-finals', sf: 'the final' }[nm.round];
-    if (upset) bullets.push(upset);
-    else if (next) bullets.push(`${shortName(winnerName)} would reach ${next}.`);
-    else if (nm.round === 'final') bullets.push(`${shortName(winnerName)} would be crowned champions.`);
-  }
-  return bullets.slice(0, 3);
+  // Owner-focused only: no team-achievement / pot-upset lines in the prediction.
+  // (Team & upset commentary still appears in completed-result Dugout Updates.)
+  return bullets.slice(0, 2);
 }
 
 function buildStakeHTML(nm, t1, t2, board) {
