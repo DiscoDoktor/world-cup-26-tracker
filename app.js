@@ -43,6 +43,34 @@ const R32_SLOTS = [
   ['2D','2G']         // M88
 ];
 
+// Official, confirmed FIFA World Cup 2026 Round of 32 line-up (matches 73–88).
+// R32 participants are fixed once the group stage is complete, so the bracket is
+// seeded directly from this table rather than re-derived. The old approach found
+// *a* valid best-third placement via generic bipartite matching, which produced a
+// FIFA-legal but incorrect arrangement (it swapped some best-third fixtures).
+// Each entry is [homeKey, awayKey] using the project's internal team keys
+// (see REAL_TEAMS); names are resolved through teamName() at seed time, so the
+// canonical display names (e.g. "United States", "Cape Verde", "Congo DR") are
+// always used — never re-invented.
+const R32_OFFICIAL = [
+  ['A1','B0'],  // M73 South Africa v Canada
+  ['E0','D1'],  // M74 Germany v Paraguay
+  ['F0','C1'],  // M75 Netherlands v Morocco
+  ['C0','F1'],  // M76 Brazil v Japan
+  ['I0','F2'],  // M77 France v Sweden
+  ['E2','I3'],  // M78 Ivory Coast v Norway
+  ['A0','E3'],  // M79 Mexico v Ecuador
+  ['L0','K1'],  // M80 England v Congo DR
+  ['D0','B1'],  // M81 United States v Bosnia-Herzegovina
+  ['G0','I1'],  // M82 Belgium v Senegal
+  ['K0','L1'],  // M83 Portugal v Croatia
+  ['H0','J2'],  // M84 Spain v Austria
+  ['B3','J1'],  // M85 Switzerland v Algeria
+  ['J0','H1'],  // M86 Argentina v Cape Verde
+  ['K3','L2'],  // M87 Colombia v Ghana
+  ['D2','G1']   // M88 Australia v Egypt
+];
+
 // Bracket-seeding version — bump to force a rebuild of saved knockout brackets
 const KO_VERSION = 2;
 
@@ -521,82 +549,24 @@ function advanceAll() {
   });
 }
 
-// Rank the twelve third-placed teams and allocate the best eight into their
-// official Round of 32 slots. Each best-third slot lists its FIFA-eligible
-// groups; we find a perfect matching of slots → qualifying groups so that no
-// two third-placed teams meet, every qualifying group is used once, and each
-// team only lands in a slot its group is eligible for.
-//
-// TODO: This produces a valid official-compliant seeding via bipartite
-// matching. The exact FIFA Annex C table (all C(12,8)=495 combinations) could
-// later replace the matching to reproduce FIFA's specific slot choices.
-function allocateThirds() {
-  // 1. Third-placed team of every group, with ranking stats
-  const thirds = GROUPS.map(g => {
-    const t = calcStandings(g)[2];
-    return { g, name: t.name, pts: t.pts, gd: t.gd, gf: t.gf };
-  });
-
-  // 2. Rank them (points → goal difference → goals for → name) and keep best 8
-  thirds.sort((a, b) =>
-    b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.name.localeCompare(b.name)
-  );
-  const best8        = thirds.slice(0, 8);
-  const qualGroups   = best8.map(t => t.g);
-  const nameByGroup  = {};
-  best8.forEach(t => { nameByGroup[t.g] = t.name; });
-
-  // 3. Collect the best-third slots and their eligible group sets
-  const slots = [];
-  R32_SLOTS.forEach(([h, a], idx) => {
-    [['h', h], ['a', a]].forEach(([side, label]) => {
-      const mm = /^3:([A-L]+)$/.exec(label);
-      if (mm) slots.push({ idx, side, eligible: new Set(mm[1].split('')) });
-    });
-  });
-
-  // 4. Perfect matching slot → qualifying group (backtracking)
-  const assign = {};
-  const used = new Set();
-  function match(i) {
-    if (i === slots.length) return true;
-    const s = slots[i];
-    for (const g of qualGroups) {
-      if (used.has(g) || !s.eligible.has(g)) continue;
-      used.add(g); assign[s.idx + s.side] = g;
-      if (match(i + 1)) return true;
-      used.delete(g); delete assign[s.idx + s.side];
-    }
-    return false;
-  }
-  match(0);
-
-  // 5. Write the assigned third-place team names into the bracket
-  slots.forEach(s => {
-    const g = assign[s.idx + s.side];
-    if (g) S.ko.r32[s.idx][s.side] = nameByGroup[g];
-  });
-}
-
 // Pure R32 seeding (no save/render) — reusable by the Latest Updates replay.
+//
+// Seeds the sixteen Round of 32 matches from the official, confirmed 2026
+// line-up (R32_OFFICIAL). The group stage is complete, so the participants are
+// fixed; writing them directly avoids the earlier best-third bug (a generic
+// bipartite matcher could pick a FIFA-legal but wrong arrangement of the
+// best-third teams).
+//
+// IMPORTANT: only the home/away participants (h, a) are written. Existing
+// knockout scores (hs, as) and penalty results (pens) are left untouched, so
+// re-running this (e.g. pressing "Auto-fill R32" again) refreshes the line-up
+// without ever erasing entered results.
 function seedR32() {
-  // Reset all R32 slots to their official seed labels
-  R32_SLOTS.forEach(([h, a], i) => { S.ko.r32[i].h = h; S.ko.r32[i].a = a; });
-
-  // Fill group winners (1X) and runners-up (2X)
-  GROUPS.forEach(g => {
-    const st = calcStandings(g);
-    const p1 = st[0].name, p2 = st[1].name;
-    S.ko.r32.forEach(m => {
-      if (m.h === `1${g}`) m.h = p1;
-      if (m.a === `1${g}`) m.a = p1;
-      if (m.h === `2${g}`) m.h = p2;
-      if (m.a === `2${g}`) m.a = p2;
-    });
+  R32_OFFICIAL.forEach(([hKey, aKey], i) => {
+    const m = S.ko.r32[i];
+    m.h = teamName(hKey);
+    m.a = teamName(aKey);
   });
-
-  // Fill the eight best third-placed teams into their eligible slots
-  allocateThirds();
 }
 
 function populateR32() {
