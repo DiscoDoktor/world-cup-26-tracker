@@ -1476,13 +1476,30 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
   /* Sweepstake: table and awards stack; chips wrap; comfortable rows */
   .sw-summary-bar { gap: 8px; }
   .sw-stat { min-width: 46%; }
-  .sw-table td, .sw-table th { padding: 4px 5px; }
-  .sw-owner-cell { font-size: .82rem; white-space: normal; }
-  .sw-chip { font-size: .72rem; }
-  /* Keep R/P/B numbers legible (not tiny) and snug on narrow screens */
-  .sw-table td.sw-num, .sw-table th.sw-num { padding-right: 6px; }
-  .sw-table td.sw-total-cell, .sw-table th.sw-total-th { padding-right: 7px; }
+
+  /* Fixed layout so columns share the container width and content can never
+     push the table wider than its box — keeps TOTAL on-screen with no
+     horizontal scroll on iPhone widths (≈319–374px of usable table space). */
+  .sw-table-section { padding: 12px 10px; }      /* tighter gutters on phones */
+  .sw-table { table-layout: fixed; width: 100%; min-width: 0; }
+  .sw-table td, .sw-table th { padding: 4px 4px; }
+
+  /* Column widths (sum ≤ 100%; Teams takes the remainder). With Bonuses no
+     longer a column, the freed width goes to Total so the full word "TOTAL"
+     and every value stay visible. */
+  .sw-table .sw-rank-cell  { width: 9%;  padding-left: 1px; padding-right: 1px; }
+  .sw-table .sw-owner-cell { width: 18%; font-size: .82rem; white-space: normal;
+                             overflow-wrap: anywhere; padding-left: 3px; padding-right: 3px; }
+  .sw-table .sw-teams-cell { width: auto; min-width: 0; overflow: hidden;
+                             padding-left: 3px; padding-right: 3px; }
+  .sw-table td.sw-num, .sw-table th.sw-num   { width: 9%;  padding-left: 1px; padding-right: 4px; }
+  .sw-table td.sw-total-cell,
+  .sw-table th.sw-total-th                   { width: 19%; padding-left: 1px; padding-right: 5px; }
   .sw-num { font-size: .8rem; }
+
+  /* Team chips must respect the Teams column and never widen the table */
+  .sw-chip { font-size: .72rem; max-width: 100%; min-width: 0; }
+  .sw-chip .sw-cname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* Assignment: full-width touch targets */
   .assign-grid { grid-template-columns: 1fr; }

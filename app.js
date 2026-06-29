@@ -1788,11 +1788,11 @@ function buildTableHTML(rows) {
     // Transparent breakdown — display-only, derived from the same scoring fns:
     //   R = Results  = matchPts (group + knockout match points)
     //   P = Progress = progBonus (knockout progression)
-    //   B = Bonuses  = placingBonus (final placing) + awardBonus (player awards)
-    //   Total = R + P + B (unchanged leaderboard total)
+    //   Total = the unchanged leaderboard total (still R + P + bonuses in the
+    //   scoring; bonuses just aren't shown as their own column for now, so while
+    //   no bonus points exist yet Total == R + P).
     const R = r.matchPts;
     const P = r.progBonus;
-    const B = r.placingBonus + r.awardBonus;
     return `
       <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
         <td class="sw-rank-cell">
@@ -1803,8 +1803,7 @@ function buildTableHTML(rows) {
         <td class="sw-teams-cell">${teams}</td>
         <td class="sw-num" title="Results: group + knockout match points">${R}</td>
         <td class="sw-num" title="Progress: knockout progression bonus">${P}</td>
-        <td class="sw-num" title="Bonuses: final placing + player awards">${B}</td>
-        <td class="sw-total-cell" title="Total = R + P + B">${r.total}</td>
+        <td class="sw-total-cell" title="Total points">${r.total}</td>
       </tr>`;
   }).join('');
 
@@ -1817,8 +1816,7 @@ function buildTableHTML(rows) {
           <th>Teams</th>
           <th class="sw-num" title="R = Results: group-stage + knockout match points (Win 2 · Draw 1)" aria-label="Results points">R</th>
           <th class="sw-num" title="P = Progress: knockout progression bonus (R32 1 · R16 2 · QF 3 · SF 4 · Final 5 · Win 6)" aria-label="Progress points">P</th>
-          <th class="sw-num" title="B = Bonuses: final placing (1st 5 · 2nd 3 · 3rd 1) + player awards (+3 each)" aria-label="Bonus points">B</th>
-          <th class="sw-total-th" title="Total = R + P + B" aria-label="Total points">Total</th>
+          <th class="sw-total-th" title="Total points" aria-label="Total points">Total</th>
         </tr>
       </thead>
       <tbody>${body}</tbody>
@@ -2007,8 +2005,8 @@ function renderSweepstake() {
     <div class="sw-body">
       <div class="sw-table-section" id="sw-table-section">
         <div class="sw-section-head">🏆 Leaderboard</div>
-        <div class="sw-legend" title="Each owner's points are shown broken down into Results, Progress and Bonuses, which add up to the Total">
-          <strong>R</strong> = Results · <strong>P</strong> = Progress · <strong>B</strong> = Bonuses
+        <div class="sw-legend" title="Each owner's points are shown broken down into Results and Progress, which add up to the Total">
+          <strong>R</strong> = Results · <strong>P</strong> = Progress
         </div>
         <div class="sw-move-note" title="Each owner's rank change over the last three completed matches">
           <strong>▲▼</strong> beneath the rank = position change over the last 3 completed matches
