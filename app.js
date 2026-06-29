@@ -1752,13 +1752,16 @@ function computeMovers(rows) {
   });
   return movers;
 }
-function moverCell(m) {
+// Movement indicator shown inline beside the rank (no separate column), so the
+// table stays narrow on phones while keeping the full movement information.
+function moverInline(m) {
   if (!m || m.move === 0) {
-    return `<td class="sw-move sw-move-none" title="No change over the last 3 matches">—</td>`;
+    const t = 'No position change over the last 3 completed matches';
+    return `<span class="sw-rank-move sw-move-none" title="${t}" aria-label="${t}">—</span>`;
   }
   const up = m.move > 0, n = Math.abs(m.move);
-  const title = `Moved from ${ord(m.from)} to ${ord(m.to)} over the last 3 matches`;
-  return `<td class="sw-move ${up ? 'sw-move-up' : 'sw-move-down'}" title="${title}">${up ? '▲' : '▼'} ${n}</td>`;
+  const t = `Moved ${up ? 'up' : 'down'} ${n} (${ord(m.from)} → ${ord(m.to)}) over the last 3 completed matches`;
+  return `<span class="sw-rank-move ${up ? 'sw-move-up' : 'sw-move-down'}" title="${t}" aria-label="${t}">${up ? '▲' : '▼'}${n}</span>`;
 }
 
 function buildTableHTML(rows) {
@@ -1782,17 +1785,26 @@ function buildTableHTML(rows) {
         `<span class="sw-cname">${esc(shortName(n))}</span>` +
         `${potBadgeMini(n)}</span>`;
     }).join('');
+    // Transparent breakdown — display-only, derived from the same scoring fns:
+    //   R = Results  = matchPts (group + knockout match points)
+    //   P = Progress = progBonus (knockout progression)
+    //   B = Bonuses  = placingBonus (final placing) + awardBonus (player awards)
+    //   Total = R + P + B (unchanged leaderboard total)
+    const R = r.matchPts;
+    const P = r.progBonus;
+    const B = r.placingBonus + r.awardBonus;
     return `
       <tr class="${idx < 3 ? 'sw-rank-'+( idx+1) : ''}">
-        <td class="sw-rank-cell">${medals[idx] || idx+1}</td>
-        ${moverCell(movers[r.owner])}
+        <td class="sw-rank-cell">
+          <span class="sw-rank-num">${medals[idx] || idx+1}</span>
+          ${moverInline(movers[r.owner])}
+        </td>
         <td class="sw-owner-cell">${esc(r.owner)}</td>
         <td class="sw-teams-cell">${teams}</td>
-        <td class="sw-num sw-bd">${r.matchPts}</td>
-        <td class="sw-num sw-bd">${r.progBonus}</td>
-        <td class="sw-num sw-bd">${r.placingBonus}</td>
-        <td class="sw-num sw-bd">${r.awardBonus}</td>
-        <td class="sw-total-cell">${r.total}</td>
+        <td class="sw-num" title="Results: group + knockout match points">${R}</td>
+        <td class="sw-num" title="Progress: knockout progression bonus">${P}</td>
+        <td class="sw-num" title="Bonuses: final placing + player awards">${B}</td>
+        <td class="sw-total-cell" title="Total = R + P + B">${r.total}</td>
       </tr>`;
   }).join('');
 
@@ -1800,15 +1812,13 @@ function buildTableHTML(rows) {
     <table class="sw-table">
       <thead>
         <tr>
-          <th class="sw-rank-cell">#</th>
-          <th class="sw-move" title="Movement over the last 3 completed matches">Move</th>
+          <th class="sw-rank-cell" title="Rank (movement shown beneath)">#</th>
           <th>Owner</th>
           <th>Teams</th>
-          <th class="sw-bd" title="Win=2 · Draw=1 · Loss=0 for every match played">Match</th>
-          <th class="sw-bd" title="R32=1 · R16=2 · QF=3 · SF=4 · Final=5 · Win=6">Prog</th>
-          <th class="sw-bd" title="1st place=5 · 2nd=3 · 3rd=1">Place</th>
-          <th class="sw-bd" title="+3 per player award">Award</th>
-          <th>Total</th>
+          <th class="sw-num" title="R = Results: group-stage + knockout match points (Win 2 · Draw 1)" aria-label="Results points">R</th>
+          <th class="sw-num" title="P = Progress: knockout progression bonus (R32 1 · R16 2 · QF 3 · SF 4 · Final 5 · Win 6)" aria-label="Progress points">P</th>
+          <th class="sw-num" title="B = Bonuses: final placing (1st 5 · 2nd 3 · 3rd 1) + player awards (+3 each)" aria-label="Bonus points">B</th>
+          <th class="sw-total-th" title="Total = R + P + B" aria-label="Total points">Total</th>
         </tr>
       </thead>
       <tbody>${body}</tbody>
@@ -1991,20 +2001,17 @@ function renderAwards() {
 function renderSweepstake() {
   const pane = document.getElementById('tab-sweepstake');
   if (!pane) return;
-  const showBd = !!uiPrefs.breakdown;
   pane.innerHTML = `
     <div id="sw-next" class="sw-next-section"></div>
     <div id="sw-updates" class="sw-updates-section"></div>
     <div class="sw-body">
-      <div class="sw-table-section${showBd ? ' show-breakdown' : ''}" id="sw-table-section">
-        <div class="sw-section-head">
-          🏆 Leaderboard
-          <button id="btn-breakdown" class="btn btn-outline btn-sm sw-bd-toggle">
-            ${showBd ? 'Hide points breakdown' : 'Show points breakdown'}
-          </button>
+      <div class="sw-table-section" id="sw-table-section">
+        <div class="sw-section-head">🏆 Leaderboard</div>
+        <div class="sw-legend" title="Each owner's points are shown broken down into Results, Progress and Bonuses, which add up to the Total">
+          <strong>R</strong> = Results · <strong>P</strong> = Progress · <strong>B</strong> = Bonuses
         </div>
         <div class="sw-move-note" title="Each owner's rank change over the last three completed matches">
-          <strong>Move</strong> = position change over the last 3 completed matches
+          <strong>▲▼</strong> beneath the rank = position change over the last 3 completed matches
           (<span class="sw-move-up">▲ up</span> · <span class="sw-move-down">▼ down</span> · <span class="sw-move-none">— same</span>)
         </div>
         <div id="sw-table"></div>
@@ -2016,16 +2023,6 @@ function renderSweepstake() {
   refreshLeaderboard();
   renderAwards();
   applyAccessMode();
-
-  // Breakdown is a local-only view preference (anyone can toggle it).
-  document.getElementById('btn-breakdown')?.addEventListener('click', () => {
-    uiPrefs.breakdown = !uiPrefs.breakdown;
-    saveUiPrefs();
-    const sec = document.getElementById('sw-table-section');
-    const btn = document.getElementById('btn-breakdown');
-    if (sec) sec.classList.toggle('show-breakdown', uiPrefs.breakdown);
-    if (btn) btn.textContent = uiPrefs.breakdown ? 'Hide points breakdown' : 'Show points breakdown';
-  });
 }
 
 // ═══════════════════════════════════════════════════════════════════

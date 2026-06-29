@@ -1,2 +1,7 @@
 .vercel
 .DS_Store
+
+# Local data artifacts (never commit live tournament data)
+backups/
+leaderboard-mobile.png
+screenshot-harness.html

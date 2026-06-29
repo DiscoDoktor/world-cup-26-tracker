@@ -735,33 +735,39 @@ main { max-width: 1500px; margin: 0 auto; padding: 20px; }
 }
 .sw-table tbody tr:last-child td { border-bottom: none; }
 .sw-table tbody tr:hover { background: var(--gray-50); }
-.sw-rank-cell  { font-size: .95rem; width: 34px; text-align: center; }
-/* Movers & Shakers indicator (always arrow + number, never colour alone) */
-.sw-move { width: 40px; text-align: center; font-size: .72rem; font-weight: 800; white-space: nowrap; }
-th.sw-move { font-size: .6rem; }
+.sw-rank-cell  { width: 40px; text-align: center; padding-top: 4px; padding-bottom: 4px; line-height: 1.05; }
+.sw-rank-num   { display: block; font-size: .95rem; font-weight: 700; }
+/* Movers & Shakers indicator beneath the rank (always arrow + number, never colour alone) */
+.sw-rank-move  { display: block; font-size: .6rem; font-weight: 800; white-space: nowrap; margin-top: 1px; }
 .sw-move-up   { color: var(--green-500); }
 .sw-move-down { color: var(--red); }
 .sw-move-none { color: var(--gray-400); }
+/* Compact R/P/B legend above the table */
+.sw-legend {
+  font-size: .72rem; color: var(--gray-700);
+  margin: 2px 0 4px; line-height: 1.35;
+}
+.sw-legend strong { color: var(--green-700); font-weight: 800; }
 .sw-move-note {
   font-size: .68rem; color: var(--gray-600);
-  margin: -2px 0 8px; line-height: 1.3;
+  margin: 0 0 8px; line-height: 1.3;
 }
 .sw-move-note strong { color: var(--green-700); }
 .sw-owner-cell { text-align: left; font-weight: 700; font-size: .88rem; white-space: nowrap; }
 .sw-teams-cell { text-align: left; line-height: 1.5; }
+/* Numeric breakdown columns: right-aligned; Total kept visually strongest */
 .sw-num        { font-weight: 600; color: var(--gray-600); font-size: .8rem; }
+.sw-table td.sw-num, .sw-table th.sw-num { text-align: right; padding-right: 10px; }
 .sw-total-cell {
   font-size: clamp(1rem, 1.2vw, 1.15rem);
   font-weight: 900;
   color: var(--green-700);
   width: 54px;
 }
+.sw-table td.sw-total-cell, .sw-table th.sw-total-th { text-align: right; padding-right: 12px; }
+.sw-table th.sw-total-th { font-size: .66rem; }
 
-/* Breakdown columns hidden by default; revealed by the toggle */
-.sw-bd { display: none; }
-.sw-table-section.show-breakdown .sw-bd { display: table-cell; }
-
-/* Breakdown toggle button sits at the right of the leaderboard heading */
+/* Small heading-right button (Latest Updates "Rebuild") */
 .sw-bd-toggle { margin-left: auto; font-size: .7rem; padding: 3px 9px; }
 
 /* Top-3 row highlights (kept subtle, rows stay the same height) */
@@ -1471,8 +1477,12 @@ header { padding-top: max(14px, env(safe-area-inset-top)); }
   .sw-summary-bar { gap: 8px; }
   .sw-stat { min-width: 46%; }
   .sw-table td, .sw-table th { padding: 4px 5px; }
-  .sw-owner-cell { font-size: .82rem; }
+  .sw-owner-cell { font-size: .82rem; white-space: normal; }
   .sw-chip { font-size: .72rem; }
+  /* Keep R/P/B numbers legible (not tiny) and snug on narrow screens */
+  .sw-table td.sw-num, .sw-table th.sw-num { padding-right: 6px; }
+  .sw-table td.sw-total-cell, .sw-table th.sw-total-th { padding-right: 7px; }
+  .sw-num { font-size: .8rem; }
 
   /* Assignment: full-width touch targets */
   .assign-grid { grid-template-columns: 1fr; }
